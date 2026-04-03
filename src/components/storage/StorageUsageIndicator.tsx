@@ -292,7 +292,7 @@ export function StorageUsageIndicator() {
         )}
 
         {/* Debug Info (only visible in development) */}
-        {process.env.NODE_ENV === 'development' && (
+        {import.meta.env.DEV && (
           <div className="text-xs text-muted-foreground border-t pt-2">
             Debug: Files {storageUsage.totalUsed} bytes, Database {dbStorage?.total_bytes || 0} bytes
           </div>

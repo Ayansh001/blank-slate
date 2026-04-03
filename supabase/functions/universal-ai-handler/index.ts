@@ -13,13 +13,20 @@ serve(async (req) => {
   }
 
   try {
+    // Get user from auth
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { data: { user } } = await supabaseClient.auth.getUser()
+    const authHeader = req.headers.get('Authorization');
+    let user = null;
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user: authUser } } = await supabaseClient.auth.getUser(token);
+      user = authUser;
+    }
+    
     if (!user) throw new Error('No user found')
 
     const { prompt, mode, content_type, source_id, options } = await req.json()
@@ -30,9 +37,8 @@ serve(async (req) => {
 
     console.log('Universal AI Handler called:', { mode, content_type, source_id, options })
 
-    // Check user's history preference before processing
+    // Check user's history preference
     const historyEnabled = await checkUserHistoryPreference(supabaseClient, user.id, mode, content_type)
-    console.log('History enabled for user:', historyEnabled)
 
     // Get user's AI configuration
     const { data: aiConfigs, error: configError } = await supabaseClient
@@ -43,14 +49,13 @@ serve(async (req) => {
       .single()
 
     if (configError || !aiConfigs) {
-      throw new Error('No active AI service configuration found')
+      throw new Error('No active AI service configuration found. Please configure an AI service in Settings.')
     }
 
     console.log('Using AI service:', aiConfigs.service_name)
 
     let result;
     
-    // Call appropriate AI service based on configuration
     if (aiConfigs.service_name === 'openai') {
       result = await callOpenAI(prompt, aiConfigs, options)
     } else if (aiConfigs.service_name === 'gemini') {
@@ -83,40 +88,27 @@ serve(async (req) => {
   }
 })
 
-// New function to check user history preferences
 async function checkUserHistoryPreference(supabaseClient: any, userId: string, mode: string, contentType: string): Promise<boolean> {
   try {
-    // Map modes and content types to feature types in ai_history_preferences
-    let featureType = 'usage_tracking'; // default
+    let featureType = 'usage_tracking';
     
-    if (mode === 'enhance' && contentType === 'note') {
-      featureType = 'note_enhancements'
-    } else if (mode === 'enhance' && contentType === 'file') {
-      featureType = 'document_analyses'
-    } else if (mode === 'quiz') {
-      featureType = 'quiz_sessions'
-    } else if (mode === 'chat') {
-      featureType = 'chat_sessions'
-    } else if (mode === 'concept') {
-      featureType = 'concept_learning'
-    }
+    if (mode === 'enhance' && contentType === 'note') featureType = 'note_enhancements'
+    else if (mode === 'enhance' && contentType === 'file') featureType = 'document_analyses'
+    else if (mode === 'quiz') featureType = 'quiz_sessions'
+    else if (mode === 'chat') featureType = 'chat_sessions'
+    else if (mode === 'concept') featureType = 'concept_learning'
 
     const { data: preference, error } = await supabaseClient
       .from('ai_history_preferences')
       .select('is_enabled')
       .eq('user_id', userId)
       .eq('feature_type', featureType)
-      .single()
+      .maybeSingle()
 
-    if (error) {
-      console.log('No history preference found, defaulting to enabled:', error.message)
-      return true // Default to enabled if no preference set
-    }
-
+    if (error) return true
     return preference?.is_enabled ?? true
   } catch (error) {
-    console.error('Error checking history preference:', error)
-    return true // Default to enabled on error
+    return true
   }
 }
 
@@ -137,6 +129,8 @@ async function callOpenAI(prompt: string, config: any, options: any) {
 
   if (!response.ok) {
     const error = await response.text()
+    if (response.status === 401) throw new Error('Invalid OpenAI API key. Please update it in Settings.')
+    if (response.status === 429) throw new Error('OpenAI quota exceeded. Please check billing at platform.openai.com.')
     throw new Error(`OpenAI API error: ${error}`)
   }
 
@@ -145,7 +139,7 @@ async function callOpenAI(prompt: string, config: any, options: any) {
 }
 
 async function callGemini(prompt: string, config: any, options: any) {
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model_name || 'gemini-1.5-flash'}:generateContent?key=${config.api_key}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model_name || 'gemini-2.0-flash'}:generateContent?key=${config.api_key}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -161,6 +155,8 @@ async function callGemini(prompt: string, config: any, options: any) {
 
   if (!response.ok) {
     const error = await response.text()
+    if (response.status === 400 && error.includes('API_KEY_INVALID')) throw new Error('Invalid Gemini API key. Please update it in Settings.')
+    if (response.status === 429) throw new Error('Gemini quota exceeded. Please check billing at Google AI Studio.')
     throw new Error(`Gemini API error: ${error}`)
   }
 
@@ -195,34 +191,20 @@ async function callAnthropic(prompt: string, config: any, options: any) {
 async function saveToDatabase(supabaseClient: any, userId: string, mode: string, contentType: string, sourceId: string, result: any, aiConfig: any) {
   try {
     if (mode === 'enhance' && contentType === 'note') {
-      // Save note enhancement
       await supabaseClient
         .from('note_enhancements')
         .insert({
           user_id: userId,
           note_id: sourceId,
-          enhancement_type: 'summary', // This should be passed from options
-          enhanced_content: result,
+          enhancement_type: 'summary',
+          original_content: '',
+          enhanced_content: typeof result === 'string' ? { text: result } : result,
           ai_service: aiConfig.service_name,
-          model_used: aiConfig.model_name,
-        })
-    } else if (mode === 'quiz') {
-      // Save quiz session
-      await supabaseClient
-        .from('quiz_sessions')
-        .insert({
-          user_id: userId,
-          source_id: sourceId,
-          quiz_data: result,
-          ai_service: aiConfig.service_name,
-          model_used: aiConfig.model_name,
+          model_used: aiConfig.model_name || 'unknown',
         })
     }
-    // Add more save cases as needed
-
     console.log('Successfully saved to database')
   } catch (error) {
     console.error('Error saving to database:', error)
-    // Don't throw here - the AI result should still be returned even if saving fails
   }
 }
