@@ -281,8 +281,8 @@ Content: ${content.slice(0, 3000)}`;
         score: finalScore,
         time_spent_minutes: timeSpent,
         completed: true,
-        ai_service: selectedProvider || 'openai',
-        model_used: 'gpt-4o-mini'
+        ai_service: activeConfig?.service_name || 'openai',
+        model_used: activeConfig?.model_name || 'gpt-4o-mini'
       }).catch(error => {
         // Silent error handling - don't disrupt quiz experience
         console.warn('History save failed (non-critical):', error);
