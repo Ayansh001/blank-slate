@@ -51,7 +51,7 @@ interface Quiz {
 
 export function SimpleQuizGenerator({ content, source }: SimpleQuizGeneratorProps) {
   const { user } = useAuth();
-  const { selectedProvider, getProviderConfig } = useAIProvider();
+  const { activeConfig } = useAIConfig();
   const { getPreference } = useAIHistoryPreferences();
   
   // UI Protection: Validate props match the locked interface
