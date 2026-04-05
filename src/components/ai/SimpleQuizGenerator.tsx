@@ -17,7 +17,7 @@ import {
 import { HamsterWheelIcon } from '@/components/ui/HamsterWheelIcon';
 import { QuizGeneratingLoader } from '@/components/ui/QuizGeneratingLoader';
 import { useAuth } from '@/features/auth/hooks/useAuth';
-import { useAIProvider } from '@/features/ai/hooks/useAIProvider';
+import { useAIConfig } from '@/features/ai/hooks/useAIConfig';
 import { useAIHistoryPreferences } from '@/hooks/useAIHistoryPreferences';
 import { useQuizTimer } from '@/hooks/useQuizTimer';
 import { ProminentQuizTimer } from '@/features/ai/components/ProminentQuizTimer';
@@ -51,7 +51,7 @@ interface Quiz {
 
 export function SimpleQuizGenerator({ content, source }: SimpleQuizGeneratorProps) {
   const { user } = useAuth();
-  const { selectedProvider, getProviderConfig } = useAIProvider();
+  const { activeConfig } = useAIConfig();
   const { getPreference } = useAIHistoryPreferences();
   
   // UI Protection: Validate props match the locked interface
@@ -129,8 +129,8 @@ export function SimpleQuizGenerator({ content, source }: SimpleQuizGeneratorProp
       return;
     }
 
-    if (!selectedProvider) {
-      toast.error('Please select an AI provider first');
+    if (!activeConfig) {
+      toast.error('Please configure an AI service in Settings first');
       return;
     }
 
@@ -140,14 +140,12 @@ export function SimpleQuizGenerator({ content, source }: SimpleQuizGeneratorProp
     try {
       logger.info('SimpleQuizGenerator', 'Starting quiz generation', { questionCount, quizType, difficulty });
       
-      // Get provider configuration
-      const providerConfig = await getProviderConfig();
-      if (!providerConfig) {
-        throw new Error('No AI provider configuration available');
-      }
-
-      // Create provider instance
-      const provider = AIProviderFactory.createProvider(providerConfig);
+      // Create provider from unified config
+      const provider = AIProviderFactory.createProvider({
+        provider: activeConfig.service_name as 'openai' | 'gemini' | 'anthropic',
+        apiKey: activeConfig.api_key!,
+        model: activeConfig.model_name,
+      });
 
       // Generate appropriate prompt based on quiz type
       let prompt;
@@ -283,8 +281,8 @@ Content: ${content.slice(0, 3000)}`;
         score: finalScore,
         time_spent_minutes: timeSpent,
         completed: true,
-        ai_service: selectedProvider || 'openai',
-        model_used: 'gpt-4o-mini'
+        ai_service: activeConfig?.service_name || 'openai',
+        model_used: activeConfig?.model_name || 'gpt-4o-mini'
       }).catch(error => {
         // Silent error handling - don't disrupt quiz experience
         console.warn('History save failed (non-critical):', error);
