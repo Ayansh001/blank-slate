@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AIProvider, AIProviderConfig } from '../types/providers';
 import { AIProviderFactory } from '../providers/AIProviderFactory';
 import { useAuth } from '@/features/auth/hooks/useAuth';
@@ -14,6 +14,11 @@ interface UseAIProviderResult {
   getProviderConfig: () => Promise<AIProviderConfig | null>;
 }
 
+/**
+ * Unified AI provider hook.
+ * Sources configuration from the ai_service_configs table (same as useAIConfig).
+ * Provides a compatible interface for all AI modules.
+ */
 export const useAIProvider = (): UseAIProviderResult => {
   const { user } = useAuth();
   const [selectedProvider, setSelectedProvider] = useState<AIProvider | null>(null);
@@ -23,9 +28,7 @@ export const useAIProvider = (): UseAIProviderResult => {
   const availableProviders = AIProviderFactory.getSupportedProviders();
 
   useEffect(() => {
-    if (user) {
-      loadActiveProvider();
-    }
+    loadActiveProvider();
   }, [user]);
 
   const loadActiveProvider = async () => {
@@ -33,10 +36,21 @@ export const useAIProvider = (): UseAIProviderResult => {
       setIsLoading(true);
       setError(null);
 
+      if (!user) {
+        // Try localStorage fallback for unauthenticated users
+        const savedProvider = localStorage.getItem('preferred-ai-provider') as AIProvider;
+        if (savedProvider && availableProviders.includes(savedProvider)) {
+          setSelectedProvider(savedProvider);
+        } else {
+          setSelectedProvider('openai');
+        }
+        return;
+      }
+
       const { data: configs, error: configError } = await supabase
         .from('ai_service_configs')
         .select('*')
-        .eq('user_id', user?.id)
+        .eq('user_id', user.id)
         .eq('is_active', true)
         .single();
 
@@ -51,12 +65,11 @@ export const useAIProvider = (): UseAIProviderResult => {
           logger.info('useAIProvider', `Loaded active provider: ${provider}`);
         }
       } else {
-        // Try to get user preference from localStorage
         const savedProvider = localStorage.getItem('preferred-ai-provider') as AIProvider;
         if (savedProvider && availableProviders.includes(savedProvider)) {
           setSelectedProvider(savedProvider);
         } else {
-          setSelectedProvider('openai'); // Default
+          setSelectedProvider('openai');
         }
       }
     } catch (err) {
@@ -71,8 +84,6 @@ export const useAIProvider = (): UseAIProviderResult => {
     try {
       setIsLoading(true);
       setError(null);
-
-      // Save preference to localStorage
       localStorage.setItem('preferred-ai-provider', provider);
       
       if (user) {
@@ -83,15 +94,11 @@ export const useAIProvider = (): UseAIProviderResult => {
           .eq('user_id', user.id);
 
         // Activate the selected provider if config exists
-        const { error: updateError } = await supabase
+        await supabase
           .from('ai_service_configs')
           .update({ is_active: true })
           .eq('user_id', user.id)
           .eq('service_name', provider);
-
-        if (updateError) {
-          logger.warn('useAIProvider', `No config found for ${provider}, will use client-side only`);
-        }
       }
 
       setSelectedProvider(provider);
@@ -104,24 +111,22 @@ export const useAIProvider = (): UseAIProviderResult => {
     }
   };
 
-  const getProviderConfig = async (): Promise<AIProviderConfig | null> => {
-    if (!selectedProvider || !user) {
-      return null;
-    }
+  const getProviderConfig = useCallback(async (): Promise<AIProviderConfig | null> => {
+    if (!user) return null;
 
     try {
+      // Query the active config from ai_service_configs
       const { data: config } = await supabase
         .from('ai_service_configs')
         .select('*')
         .eq('user_id', user.id)
-        .eq('service_name', selectedProvider)
         .eq('is_active', true)
         .single();
 
       if (config && config.api_key) {
         return {
-          provider: selectedProvider,
-          model: config.model_name || AIProviderFactory.getDefaultModels()[selectedProvider],
+          provider: config.service_name as AIProvider,
+          model: config.model_name || AIProviderFactory.getDefaultModels()[config.service_name as AIProvider],
           apiKey: config.api_key,
         };
       }
@@ -131,7 +136,7 @@ export const useAIProvider = (): UseAIProviderResult => {
       logger.error('useAIProvider', 'Failed to get provider config', err);
       return null;
     }
-  };
+  }, [user]);
 
   return {
     selectedProvider,
