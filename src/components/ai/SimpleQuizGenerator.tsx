@@ -129,8 +129,8 @@ export function SimpleQuizGenerator({ content, source }: SimpleQuizGeneratorProp
       return;
     }
 
-    if (!selectedProvider) {
-      toast.error('Please select an AI provider first');
+    if (!activeConfig) {
+      toast.error('Please configure an AI service in Settings first');
       return;
     }
 
@@ -140,14 +140,12 @@ export function SimpleQuizGenerator({ content, source }: SimpleQuizGeneratorProp
     try {
       logger.info('SimpleQuizGenerator', 'Starting quiz generation', { questionCount, quizType, difficulty });
       
-      // Get provider configuration
-      const providerConfig = await getProviderConfig();
-      if (!providerConfig) {
-        throw new Error('No AI provider configuration available');
-      }
-
-      // Create provider instance
-      const provider = AIProviderFactory.createProvider(providerConfig);
+      // Create provider from unified config
+      const provider = AIProviderFactory.createProvider({
+        provider: activeConfig.service_name as 'openai' | 'gemini' | 'anthropic',
+        apiKey: activeConfig.api_key!,
+        model: activeConfig.model_name,
+      });
 
       // Generate appropriate prompt based on quiz type
       let prompt;
