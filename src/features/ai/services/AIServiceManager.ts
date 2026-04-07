@@ -85,15 +85,18 @@ export class AIServiceManager {
   }
 
   validateAPIKey(provider: AIServiceProvider, apiKey: string): boolean {
-    if (!apiKey || typeof apiKey !== 'string') return false;
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length < 10) return false;
     
+    const trimmed = apiKey.trim();
     switch (provider) {
       case 'openai':
-        return apiKey.startsWith('sk-') && apiKey.length > 20;
+        // Accept sk-... including project keys (sk-proj-...)
+        return trimmed.startsWith('sk-') && trimmed.length > 20;
       case 'anthropic':
-        return apiKey.startsWith('sk-ant-') && apiKey.length > 20;
+        return trimmed.startsWith('sk-ant-') && trimmed.length > 20;
       case 'gemini':
-        return apiKey.startsWith('AIzaSy') && apiKey.length > 30;
+        // Accept any Google API key starting with AIza
+        return trimmed.startsWith('AIza') && trimmed.length > 20;
       default:
         return false;
     }
