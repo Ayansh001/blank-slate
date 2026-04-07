@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Brain, Loader2, Settings } from 'lucide-react';
+import { Brain, Loader2 } from 'lucide-react';
 import { AIProviderLogo } from '@/components/ui/AIProviderLogo';
 import { AIServiceProvider } from '@/features/ai/types';
 import { useConceptLearner } from '../hooks/useConceptLearner';
@@ -13,10 +13,7 @@ import { SmartFlashcards } from './SmartFlashcards';
 import { InteractiveMindMap } from './InteractiveMindMap';
 import { IntelligentVideoPlayer } from './IntelligentVideoPlayer';
 import { SmartTextHighlighter } from './SmartTextHighlighter';
-import { OpenAIKeyManager } from '@/components/ai/OpenAIKeyManager';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { openAIConceptLearningService } from '@/services/OpenAIConceptLearningService';
-import { useAuth } from '@/features/auth/hooks/useAuth';
+import { useAIConfig } from '@/features/ai/hooks/useAIConfig';
 
 interface EnhancedConceptLearnerProps {
   initialConcept?: string;
@@ -28,38 +25,11 @@ export function EnhancedConceptLearner({
   provider = 'gemini' 
 }: EnhancedConceptLearnerProps) {
   const [concept, setConcept] = useState(initialConcept);
-  const [showOpenAIConfig, setShowOpenAIConfig] = useState(false);
-  const [openAIConnected, setOpenAIConnected] = useState(false);
-  const [isCheckingConnection, setIsCheckingConnection] = useState(false);
   const { isLoading, conceptData, learnConcept, actualProvider, useOpenAIFrontend } = useConceptLearner();
-  const { user } = useAuth();
+  const { activeConfig } = useAIConfig();
 
-  // Check for existing OpenAI connection on mount
-  useEffect(() => {
-    const checkExistingConnection = async () => {
-      if (provider === 'openai') {
-        setIsCheckingConnection(true);
-        try {
-          // First try to get API key (backend or local)
-          const existingKey = await openAIConceptLearningService.getApiKey(user?.id);
-          if (existingKey) {
-            // Test the connection if key exists
-            const connected = await openAIConceptLearningService.testConnection();
-            setOpenAIConnected(connected);
-          } else {
-            setOpenAIConnected(false);
-          }
-        } catch (error) {
-          console.error('OpenAI connection check failed:', error);
-          setOpenAIConnected(false);
-        } finally {
-          setIsCheckingConnection(false);
-        }
-      }
-    };
-
-    checkExistingConnection();
-  }, [provider, user?.id]);
+  // The concept learner is ready if there's an active AI config with an API key
+  const isReady = !!(activeConfig && activeConfig.api_key);
 
   const handleLearnConcept = async () => {
     if (!isLoading && concept.trim()) {
@@ -81,26 +51,6 @@ export function EnhancedConceptLearner({
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6">
-      {/* OpenAI Configuration (for OpenAI provider only) */}
-      {provider === 'openai' && (
-        <Collapsible open={showOpenAIConfig} onOpenChange={setShowOpenAIConfig}>
-          <CollapsibleTrigger asChild>
-            <Button variant="outline" className="w-full">
-              <Settings className="h-4 w-4 mr-2" />
-              OpenAI Configuration
-              {isCheckingConnection && <Badge variant="outline" className="ml-2">Checking...</Badge>}
-              {!isCheckingConnection && openAIConnected && <Badge variant="default" className="ml-2">Connected</Badge>}
-              {!isCheckingConnection && !openAIConnected && <Badge variant="secondary" className="ml-2">Not Connected</Badge>}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="mt-4">
-              <OpenAIKeyManager onConnectionChange={setOpenAIConnected} />
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-
       {/* Input Section */}
       <Card>
         <CardHeader>
@@ -120,9 +70,9 @@ export function EnhancedConceptLearner({
           </CardTitle>
           <CardDescription>
             Advanced AI-powered learning with interactive features, smart highlighting, and adaptive flashcards
-            {provider === 'openai' && !openAIConnected && (
+            {!isReady && (
               <span className="block mt-2 text-orange-600 text-sm">
-                ⚠️ Configure your OpenAI API key above to use the concept learner
+                ⚠️ Please configure your AI service in Settings to use the concept learner
               </span>
             )}
           </CardDescription>
@@ -138,7 +88,7 @@ export function EnhancedConceptLearner({
             />
             <Button 
               onClick={handleLearnConcept} 
-              disabled={!concept.trim() || isLoading || (provider === 'openai' && !openAIConnected)}
+              disabled={!concept.trim() || isLoading || !isReady}
               className="min-w-[100px]"
             >
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Learn'}
