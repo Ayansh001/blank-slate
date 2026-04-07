@@ -85,46 +85,28 @@ export class AIServiceManager {
   }
 
   validateAPIKey(provider: AIServiceProvider, apiKey: string): boolean {
-    if (!apiKey || typeof apiKey !== 'string') return false;
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length < 10) return false;
     
+    const trimmed = apiKey.trim();
     switch (provider) {
       case 'openai':
-        return apiKey.startsWith('sk-') && apiKey.length > 20;
+        // Accept sk-... including project keys (sk-proj-...)
+        return trimmed.startsWith('sk-') && trimmed.length > 20;
       case 'anthropic':
-        return apiKey.startsWith('sk-ant-') && apiKey.length > 20;
+        return trimmed.startsWith('sk-ant-') && trimmed.length > 20;
       case 'gemini':
-        return apiKey.startsWith('AIzaSy') && apiKey.length > 30;
+        // Accept any Google API key starting with AIza
+        return trimmed.startsWith('AIza') && trimmed.length > 20;
       default:
         return false;
     }
   }
 
   async testAPIKey(provider: AIServiceProvider, apiKey: string): Promise<boolean> {
-    if (!this.validateAPIKey(provider, apiKey)) return false;
-
-    try {
-      switch (provider) {
-        case 'openai':
-          const openaiResponse = await fetch('https://api.openai.com/v1/models', {
-            headers: { 'Authorization': `Bearer ${apiKey}` }
-          });
-          return openaiResponse.ok;
-          
-        case 'gemini':
-          const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-          return geminiResponse.ok;
-          
-        case 'anthropic':
-          // Anthropic doesn't have a simple test endpoint, so we'll just validate format
-          return true;
-          
-        default:
-          return false;
-      }
-    } catch (error) {
-      console.error('API key test failed:', error);
-      return false;
-    }
+    // Only validate format — skip browser-side model-listing calls
+    // that can fail due to CORS or network issues yet the key is valid.
+    // The real validation happens when the key is actually used by a feature.
+    return this.validateAPIKey(provider, apiKey);
   }
 
   async trackUsage(
