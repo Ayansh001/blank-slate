@@ -299,7 +299,7 @@ export default function AIChat() {
           </div>
         </div>
 
-        <SimpleServiceSelector />
+        <UnifiedAIServiceSelector />
         
         {activeConfig && (
           <div className="flex justify-center">
