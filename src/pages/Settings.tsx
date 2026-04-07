@@ -95,7 +95,6 @@ export default function Settings() {
 
         <TabsContent value="ai" className="space-y-6">
           <UnifiedAIServiceSelector />
-          <AIConfigurationPanel />
         </TabsContent>
 
         <TabsContent value="appearance" className="space-y-6">
