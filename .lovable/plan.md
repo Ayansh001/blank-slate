@@ -1,113 +1,84 @@
 
-Diagnosis
 
-- The screen in your screenshot is coming from `src/components/ai/OpenAIKeyManager.tsx`; the exact red card text and toast text match that file.
-- OpenAI and Gemini are both affected by the same main problem: the app has multiple separate AI configuration/validation flows, and they do not agree with each other.
-- Current config paths are split across:
-  - `UnifiedAIServiceSelector`
-  - `AIConfigurationPanel`
-  - `SimpleServiceSelector`
-  - `OpenAIKeyManager`
-- Because of that, one part of the app can say “connected” while another says “wrong API key”.
+## Structured Diagnostic Report
 
-Main root causes I found
+### Function Called
+- **Concept Learner**: `useConceptLearner.ts` calls `AIProviderFactory.createProvider()` directly (client-side) when `activeConfig` has an `api_key`. Falls back to edge functions `openai-concept-learner-v2` or `gemini-concept-learner-v2` only when no local config exists.
+- **Chat**: `useEnhancedChat.ts` calls edge functions `openai-simple-chat` or `ai-gemini-chat`, passing `configData.api_key` in the request body.
+- **Quiz/Enhancer**: `SimpleQuizGenerator.tsx` and `SimpleNoteEnhancer.tsx` call `AIProviderFactory.createProvider()` directly (client-side).
 
-1. Shared root cause for both OpenAI and Gemini
-- `AIServiceManager.testAPIKey()` does hard validation with direct browser calls to model-listing endpoints.
-- That validation path is not the same path used later by actual features like quiz, enhancer, concept learner, and chat.
-- So a key can be valid for real usage but still get rejected during the “save/check” step.
+### Auth Status
+- Chat: reads config via `supabase.from('ai_service_configs').select('*').eq('user_id', user.id).eq('is_active', true).single()` -- works correctly.
+- Concept Learner: uses `useAIConfig()` hook which does the same query via `AIServiceManager.getUserAIConfigs()` -- works correctly.
 
-2. OpenAI-specific extra bug
-- `OpenAIConceptLearningService.testConnection()` calls `getApiKey()` without `userId`.
-- That means saved/backend config can be skipped, and the concept learner can fall back to stale or empty local storage.
-- `OpenAIKeyManager.testExistingConnection(key)` also ignores the `key` argument entirely.
-- Result: Learn page can show “Not connected” even when OpenAI is already configured elsewhere.
+### Config Found
+- DB table `ai_service_configs` has columns: `api_key`, `service_name`, `model_name`, `is_active`, `user_id`.
+- There is **NO** column called `api_key_encrypted` in the database.
 
-3. Gemini-specific extra bug
-- `AIServiceManager.validateAPIKey()` only accepts Gemini keys starting with `AIzaSy`.
-- That is too strict. The validator should accept standard Google API key format more broadly (`AIza...`).
-- So Gemini can be rejected before it is even saved.
+### DB API Key Present
+- The `api_key` column exists and is used by the frontend correctly.
 
-4. Duplicate UI problem
-- `src/pages/Settings.tsx` renders both `UnifiedAIServiceSelector` and `AIConfigurationPanel`.
-- Those two screens can validate, save, and display status differently.
-- `src/pages/AIChat.tsx` also has a third setup flow via `SimpleServiceSelector`.
+### Env Key Present
+- Edge functions try `Deno.env.get('OPENAI_API_KEY')` and `Deno.env.get('GEMINI_API_KEY')` -- these are likely NOT set as Supabase secrets.
 
-Implementation plan
+---
 
-1. Unify AI config into one resolved source
-- Create one shared resolver/hook that returns the active AI config:
-  - `provider`
-  - `model`
-  - `apiKey`
-  - `source`
-- Make chat, quiz, note enhancer, file enhancer, and concept learner all read from that one resolver.
-- Remove feature-level direct localStorage/config lookup logic.
+### FAILURE POINTS FOUND
 
-2. Fix validation logic so it matches real usage
-- Replace strict pre-save validation with provider-aware rules:
-  - OpenAI: accept `sk-...` including project keys
-  - Gemini: accept `AIza...`
-- Change “test connection” to use the same provider execution path used by actual features, not a separate model-listing precheck.
-- Surface exact provider errors instead of generic “wrong API key”.
+#### Failure Point 1: Edge function `concept-learner-handler` references `api_key_encrypted` (non-existent column)
+- **File**: `supabase/functions/concept-learner-handler/index.ts`, line 79-82
+- **Code**: `configData.api_key_encrypted` -- this column does NOT exist in the DB
+- **Impact**: When concept learner falls back to edge function path, it gets `undefined` for the API key and fails with "API key not configured"
+- **Note**: Currently the frontend concept learner uses client-side calls (not this edge function) when `activeConfig.api_key` exists, so this only fails if the config query returns no `api_key`.
 
-3. Fix the OpenAI concept learner bug
-- Refactor `OpenAIKeyManager` and `OpenAIConceptLearningService` so connection testing uses the actually selected key source.
-- Pass `userId` when checking saved configs, or remove this custom service and reuse the shared resolver.
-- Recalculate connection state when local override is toggled.
-- Stop false “Not connected” states from blocking the Learn button.
+#### Failure Point 2: Chat edge functions receive API key correctly
+- **File**: `src/features/ai/hooks/useEnhancedChat.ts`, lines 191, 205, 219
+- **Code**: `apiKey: configData.api_key` -- this IS correct
+- **Edge functions** `openai-simple-chat` and `ai-gemini-chat` accept `apiKey` from the request body -- this works
+- **Status**: Chat path is architecturally correct
 
-4. Remove duplicate setup components
-- In `Settings.tsx`, keep only one AI configuration UI.
-- In `AIChat.tsx`, reuse the same shared config/status component instead of `SimpleServiceSelector`.
-- In `EnhancedConceptLearner`, stop using separate OpenAI-only connection logic for gating.
+#### Failure Point 3: `useAIProvider.ts` line 54 uses `.single()` instead of `.maybeSingle()`
+- **File**: `src/features/ai/hooks/useAIProvider.ts`, line 54
+- **Impact**: If no active config exists, `.single()` throws a PostgREST error (PGRST116) instead of returning null gracefully. The error is caught on line 57 but only for that specific code -- other consumers may not handle it.
 
-5. Align all AI features to the same config path
-- Verify and update these to use the same resolved config:
-  - `useEnhancedChat`
-  - `SimpleQuizGenerator`
-  - `SimpleNoteEnhancer`
-  - `SimpleFileEnhancer`
-  - `useConceptLearner`
+#### Failure Point 4: `useAIProvider.ts` `getProviderConfig` also uses `.single()` (line 124)
+- Same issue as above.
 
-Files to update
+#### Failure Point 5: RLS may block `api_key` from being returned
+- The `ai_service_configs` table stores raw API keys. If RLS policies restrict which columns are visible, `api_key` could come back as `null` even when stored.
+- Need to verify: does the frontend actually receive `api_key` when querying? The `useAIConfig` hook logs nothing about this.
 
-- `src/features/ai/services/AIServiceManager.ts`
-- `src/features/ai/hooks/useAIConfig.ts`
-- `src/components/ai/OpenAIKeyManager.tsx`
-- `src/services/OpenAIConceptLearningService.ts`
-- `src/features/concept-learner/components/EnhancedConceptLearner.tsx`
-- `src/features/concept-learner/hooks/useConceptLearner.ts`
-- `src/components/ai/AIConfigurationPanel.tsx`
-- `src/features/ai/components/UnifiedAIServiceSelector.tsx`
-- `src/features/ai/components/SimpleServiceSelector.tsx`
-- `src/pages/Settings.tsx`
-- `src/pages/AIChat.tsx`
+#### Failure Point 6: Six edge functions still reference `api_key_encrypted`
+- `concept-learner-handler`, `ai-chat-handler`, `ai-quiz-generator`, `ai-note-enhancer`, `ai-smart-organizer`, `ai-content-analyzer`
+- All read `configData.api_key_encrypted` which does not exist, so they always get `undefined`
 
-Technical details
+---
 
-```text
-Current broken flow
-Settings -> validator A
-AI Chat -> validator B
-Learn page -> OpenAI local-storage checker
-Features -> mixed config readers
+### Fix Required
 
-Target flow
-One resolved AI config -> one validation strategy -> all AI features use the same provider/model/key
-```
+**Step 1: Fix all edge functions referencing `api_key_encrypted` → `api_key`**
 
-- No database schema change is required. `ai_service_configs` already has the needed fields.
-- The screenshot issue is not mainly quota-related. It is primarily a broken connection-status/validation architecture.
+Update these 6 edge functions to use `configData.api_key` instead of `configData.api_key_encrypted`:
+- `supabase/functions/concept-learner-handler/index.ts` (lines 79, 81)
+- `supabase/functions/ai-chat-handler/index.ts` (lines 111, 113)
+- `supabase/functions/ai-quiz-generator/index.ts` (lines 136, 138)
+- `supabase/functions/ai-note-enhancer/index.ts` (lines 102-104, 120, 122)
+- `supabase/functions/ai-smart-organizer/index.ts` (line 94)
+- `supabase/functions/ai-content-analyzer/index.ts` (line 154)
 
-QA after implementation
+**Step 2: Fix `.single()` calls in `useAIProvider.ts`**
 
-- Save a new OpenAI key in Settings and confirm the same status appears in Settings, AI Chat, and Learn.
-- Save a new Gemini key and confirm it is not rejected by the old overly strict prefix rule.
-- Test end-to-end:
-  - AI chat
-  - concept learner
-  - quiz generator
-  - note enhancer
-  - file enhancer
-- Recheck on mobile viewport so no page shows conflicting “connected / not connected” states.
+Change lines 54 and 124 from `.single()` to `.maybeSingle()` to prevent PostgREST errors when no active config exists.
+
+**Step 3: Add diagnostic logging to `useAIConfig`**
+
+Add a `console.log` when `activeConfig` is resolved so we can confirm `api_key` is actually returned from the DB (not blocked by RLS).
+
+**Step 4: Verify client-side concept learner path**
+
+The `useConceptLearner.ts` client-side path (lines 89-123) is architecturally correct -- it reads `activeConfig.api_key` and passes it to `AIProviderFactory.createProvider()`. The only way this fails is if `api_key` is null/empty coming from the DB query.
+
+### Summary
+
+The single exact root cause is: **6 edge functions reference a non-existent column `api_key_encrypted`** instead of the actual column `api_key`. This causes all edge-function-based AI features to fail with "API key not configured" even when a valid key is stored. The client-side direct API paths (quiz, enhancer, concept learner) work correctly IF `api_key` is returned from the DB -- the secondary issue is `.single()` vs `.maybeSingle()` in `useAIProvider.ts` which can cause cascading errors.
+
