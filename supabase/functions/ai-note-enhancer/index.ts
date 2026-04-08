@@ -99,9 +99,9 @@ serve(async (req) => {
 
     // Debug: Log API key format (first 10 chars only for security)
     console.log('API key format check:', {
-      hasKey: !!configData.api_key_encrypted,
-      keyLength: configData.api_key_encrypted?.length,
-      keyPrefix: configData.api_key_encrypted?.substring(0, 10),
+      hasKey: !!configData.api_key,
+      keyLength: configData.api_key?.length,
+      keyPrefix: configData.api_key?.substring(0, 10),
       service: configData.service_name
     });
 
@@ -117,9 +117,9 @@ serve(async (req) => {
     }
 
     // Fallback to stored API key if no secret is configured
-    if (!apiKey && configData.api_key_encrypted) {
+    if (!apiKey && configData.api_key) {
       console.log('Using stored API key as fallback');
-      apiKey = configData.api_key_encrypted;
+      apiKey = configData.api_key;
     }
 
     // Validate API key exists

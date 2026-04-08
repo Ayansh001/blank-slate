@@ -91,7 +91,7 @@ async function createOrganizationSuggestions(items: any[], organizationType: str
 
   const prompt = createOrganizationPrompt(itemsContext, organizationType);
   const serviceName = configData.service_name.toLowerCase();
-  const apiKey = configData.api_key_encrypted;
+  const apiKey = configData.api_key;
 
   if (serviceName === 'openai') {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {

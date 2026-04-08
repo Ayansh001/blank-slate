@@ -108,9 +108,9 @@ serve(async (req) => {
     }
 
     // Fallback to stored API key if no secret is configured
-    if (!apiKey && configData.api_key_encrypted) {
+    if (!apiKey && configData.api_key) {
       console.log('Using stored API key as fallback');
-      apiKey = configData.api_key_encrypted;
+      apiKey = configData.api_key;
     }
 
     if (!apiKey) {
