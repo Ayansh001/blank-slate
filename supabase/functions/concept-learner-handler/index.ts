@@ -76,9 +76,9 @@ serve(async (req) => {
     // Get API key
     let apiKey: string | null = null;
     if (configData.service_name.toLowerCase() === 'openai') {
-      apiKey = Deno.env.get('OPENAI_API_KEY') || configData.api_key_encrypted;
+      apiKey = Deno.env.get('OPENAI_API_KEY') || configData.api_key;
     } else if (configData.service_name.toLowerCase() === 'gemini') {
-      apiKey = Deno.env.get('GEMINI_API_KEY') || configData.api_key_encrypted;
+      apiKey = Deno.env.get('GEMINI_API_KEY') || configData.api_key;
     }
 
     if (!apiKey) {

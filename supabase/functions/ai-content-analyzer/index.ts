@@ -151,7 +151,7 @@ async function analyzeContent(file: any, analysisType: string, supabase: any, us
 
   const prompt = createAnalysisPrompt(content, file.name, analysisType);
   const serviceName = configData.service_name.toLowerCase();
-  const apiKey = configData.api_key_encrypted;
+  const apiKey = configData.api_key;
 
   if (serviceName === 'openai') {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {

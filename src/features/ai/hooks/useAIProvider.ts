@@ -52,9 +52,9 @@ export const useAIProvider = (): UseAIProviderResult => {
         .select('*')
         .eq('user_id', user.id)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
 
-      if (configError && configError.code !== 'PGRST116') {
+      if (configError) {
         throw configError;
       }
 
@@ -121,7 +121,7 @@ export const useAIProvider = (): UseAIProviderResult => {
         .select('*')
         .eq('user_id', user.id)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
 
       if (config && config.api_key) {
         return {
