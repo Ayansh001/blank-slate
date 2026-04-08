@@ -1,84 +1,78 @@
 
 
-## Structured Diagnostic Report
+## Full System Recheck Report
 
-### Function Called
-- **Concept Learner**: `useConceptLearner.ts` calls `AIProviderFactory.createProvider()` directly (client-side) when `activeConfig` has an `api_key`. Falls back to edge functions `openai-concept-learner-v2` or `gemini-concept-learner-v2` only when no local config exists.
-- **Chat**: `useEnhancedChat.ts` calls edge functions `openai-simple-chat` or `ai-gemini-chat`, passing `configData.api_key` in the request body.
-- **Quiz/Enhancer**: `SimpleQuizGenerator.tsx` and `SimpleNoteEnhancer.tsx` call `AIProviderFactory.createProvider()` directly (client-side).
+### Step 1 — DB Schema: PASS
+- Table `ai_service_configs` has columns: `api_key`, `service_name`, `model_name`, `is_active`, `user_id`
+- `api_key_encrypted` exists ONLY in migration history (renamed to `api_key`), NOT in any runtime code
+- Zero matches for `api_key_encrypted` in `supabase/functions/`
 
-### Auth Status
-- Chat: reads config via `supabase.from('ai_service_configs').select('*').eq('user_id', user.id).eq('is_active', true).single()` -- works correctly.
-- Concept Learner: uses `useAIConfig()` hook which does the same query via `AIServiceManager.getUserAIConfigs()` -- works correctly.
+### Step 2 — DB → Frontend Flow: PASS
+Console logs confirm:
+```
+AI Config active: { provider: "openai", hasApiKey: true, keyPrefix: "sk-proj-...", isActive: true }
+```
+- `activeConfig` exists
+- `activeConfig.api_key` is NOT null
+- RLS is not blocking the key
 
-### Config Found
-- DB table `ai_service_configs` has columns: `api_key`, `service_name`, `model_name`, `is_active`, `user_id`.
-- There is **NO** column called `api_key_encrypted` in the database.
+### Step 3 — RLS Policies: PASS
+The diagnostic log proves `api_key` is returned to the frontend. If RLS blocked it, `hasApiKey` would be `false`.
 
-### DB API Key Present
-- The `api_key` column exists and is used by the frontend correctly.
+### Step 4 — Execution Path Classification
 
-### Env Key Present
-- Edge functions try `Deno.env.get('OPENAI_API_KEY')` and `Deno.env.get('GEMINI_API_KEY')` -- these are likely NOT set as Supabase secrets.
+| Feature | Path | File |
+|---------|------|------|
+| Concept Learner | CLIENT (AIProviderFactory) when config exists, BACKEND fallback to edge fn | `useConceptLearner.ts` |
+| Chat | BACKEND (edge function: `openai-simple-chat` / `ai-gemini-chat`) | `useEnhancedChat.ts` |
+| Quiz | CLIENT (AIProviderFactory) | `SimpleQuizGenerator.tsx` |
+| Note Enhancer | CLIENT (AIProviderFactory) | `SimpleNoteEnhancer.tsx` |
+| File Enhancer | CLIENT (AIProviderFactory) | `SimpleFileEnhancer.tsx` |
 
----
+### Step 5 — API Key Usage Per Path: PASS (with one issue)
 
-### FAILURE POINTS FOUND
+**CLIENT PATH**: All client-side features read `activeConfig.api_key` and pass it to `AIProviderFactory.createProvider()`. This is correct and verified working.
 
-#### Failure Point 1: Edge function `concept-learner-handler` references `api_key_encrypted` (non-existent column)
-- **File**: `supabase/functions/concept-learner-handler/index.ts`, line 79-82
-- **Code**: `configData.api_key_encrypted` -- this column does NOT exist in the DB
-- **Impact**: When concept learner falls back to edge function path, it gets `undefined` for the API key and fails with "API key not configured"
-- **Note**: Currently the frontend concept learner uses client-side calls (not this edge function) when `activeConfig.api_key` exists, so this only fails if the config query returns no `api_key`.
+**BACKEND PATH (Chat)**: `useEnhancedChat.ts` line 191/205/219 passes `configData.api_key` to edge functions. Edge functions (`openai-simple-chat`, `ai-gemini-chat`) accept `apiKey` from request body. This is correct.
 
-#### Failure Point 2: Chat edge functions receive API key correctly
+**REMAINING ISSUE**: `useEnhancedChat.ts` line 176 still uses `.single()` instead of `.maybeSingle()`. If user has zero active configs, this throws a PostgREST error instead of returning null gracefully. The error message would be a cryptic database error rather than "AI service not configured."
+
+### Step 6 — Edge Function Column References: PASS
+All 6 previously-broken edge functions now correctly use `api_key` (not `api_key_encrypted`). Verified via search.
+
+### Step 7 — No Mixed Architecture Issues: PASS
+Each feature uses exactly one path. Concept learner has a clean fallback: client-side first, edge function only if no local config.
+
+### Step 8 — Remaining Issues Found
+
+**Issue 1: `useEnhancedChat.ts` line 176 — `.single()` not yet fixed**
+- **File**: `src/features/ai/hooks/useEnhancedChat.ts`, line 176
+- **Code**: `.single()` should be `.maybeSingle()`
+- **Impact**: If no active config exists, chat crashes with PostgREST error instead of showing "please configure" message
+- **Severity**: Medium — only affects users with no active config
+
+**Issue 2: Chat sends API key in request body over the network**
 - **File**: `src/features/ai/hooks/useEnhancedChat.ts`, lines 191, 205, 219
-- **Code**: `apiKey: configData.api_key` -- this IS correct
-- **Edge functions** `openai-simple-chat` and `ai-gemini-chat` accept `apiKey` from the request body -- this works
-- **Status**: Chat path is architecturally correct
+- **Code**: `apiKey: configData.api_key` sent in POST body to edge function
+- **Impact**: Security concern — API key travels from browser → Supabase edge function. The edge function already has access to the DB via service role key, so it could read the key itself.
+- **Severity**: Low (edge functions are HTTPS, but it's an unnecessary exposure)
 
-#### Failure Point 3: `useAIProvider.ts` line 54 uses `.single()` instead of `.maybeSingle()`
-- **File**: `src/features/ai/hooks/useAIProvider.ts`, line 54
-- **Impact**: If no active config exists, `.single()` throws a PostgREST error (PGRST116) instead of returning null gracefully. The error is caught on line 57 but only for that specific code -- other consumers may not handle it.
+### Step 9 — Conclusion
 
-#### Failure Point 4: `useAIProvider.ts` `getProviderConfig` also uses `.single()` (line 124)
-- Same issue as above.
+The system is architecturally correct now. The previous fixes (removing `api_key_encrypted`, fixing `.single()` in `useAIProvider.ts`, unifying config) are all in place and verified working.
 
-#### Failure Point 5: RLS may block `api_key` from being returned
-- The `ai_service_configs` table stores raw API keys. If RLS policies restrict which columns are visible, `api_key` could come back as `null` even when stored.
-- Need to verify: does the frontend actually receive `api_key` when querying? The `useAIConfig` hook logs nothing about this.
+**One remaining fix needed:**
 
-#### Failure Point 6: Six edge functions still reference `api_key_encrypted`
-- `concept-learner-handler`, `ai-chat-handler`, `ai-quiz-generator`, `ai-note-enhancer`, `ai-smart-organizer`, `ai-content-analyzer`
-- All read `configData.api_key_encrypted` which does not exist, so they always get `undefined`
+1. `src/features/ai/hooks/useEnhancedChat.ts` line 176: Change `.single()` → `.maybeSingle()` to prevent chat crashes when no config exists
 
----
+### Implementation
 
-### Fix Required
+Single file change — replace `.single()` with `.maybeSingle()` on line 176 of `src/features/ai/hooks/useEnhancedChat.ts`.
 
-**Step 1: Fix all edge functions referencing `api_key_encrypted` → `api_key`**
-
-Update these 6 edge functions to use `configData.api_key` instead of `configData.api_key_encrypted`:
-- `supabase/functions/concept-learner-handler/index.ts` (lines 79, 81)
-- `supabase/functions/ai-chat-handler/index.ts` (lines 111, 113)
-- `supabase/functions/ai-quiz-generator/index.ts` (lines 136, 138)
-- `supabase/functions/ai-note-enhancer/index.ts` (lines 102-104, 120, 122)
-- `supabase/functions/ai-smart-organizer/index.ts` (line 94)
-- `supabase/functions/ai-content-analyzer/index.ts` (line 154)
-
-**Step 2: Fix `.single()` calls in `useAIProvider.ts`**
-
-Change lines 54 and 124 from `.single()` to `.maybeSingle()` to prevent PostgREST errors when no active config exists.
-
-**Step 3: Add diagnostic logging to `useAIConfig`**
-
-Add a `console.log` when `activeConfig` is resolved so we can confirm `api_key` is actually returned from the DB (not blocked by RLS).
-
-**Step 4: Verify client-side concept learner path**
-
-The `useConceptLearner.ts` client-side path (lines 89-123) is architecturally correct -- it reads `activeConfig.api_key` and passes it to `AIProviderFactory.createProvider()`. The only way this fails is if `api_key` is null/empty coming from the DB query.
-
-### Summary
-
-The single exact root cause is: **6 edge functions reference a non-existent column `api_key_encrypted`** instead of the actual column `api_key`. This causes all edge-function-based AI features to fail with "API key not configured" even when a valid key is stored. The client-side direct API paths (quiz, enhancer, concept learner) work correctly IF `api_key` is returned from the DB -- the secondary issue is `.single()` vs `.maybeSingle()` in `useAIProvider.ts` which can cause cascading errors.
+Everything else is verified working:
+- DB schema correct
+- Frontend reads `api_key` successfully (proven by console log)
+- Edge functions use correct column name
+- Client-side providers receive valid API key
+- No mixed architecture conflicts
 
