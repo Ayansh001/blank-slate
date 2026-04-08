@@ -173,7 +173,7 @@ export function useEnhancedChat({ sessionId, fileContext, systemPrompt }: Enhanc
         .select('*')
         .eq('user_id', user.id)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
 
       if (!configData?.api_key) {
         throw new Error('AI service not configured. Please add your API key in AI settings.');
