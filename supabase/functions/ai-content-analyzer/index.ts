@@ -190,7 +190,7 @@ async function analyzeContent(file: any, analysisType: string, supabase: any, us
       throw new Error('Failed to parse analysis content as JSON');
     }
   } else if (serviceName === 'gemini') {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${configData.model_name || 'gemini-pro'}:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${configData.model_name || 'gemini-1.5-flash'}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

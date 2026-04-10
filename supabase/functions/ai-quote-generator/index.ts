@@ -246,7 +246,7 @@ async function generateQuotesForCategory(aiConfig: any, category: string): Promi
     };
   } else if (aiConfig.service_name === 'gemini') {
     const apiKey = aiConfig.api_key || Deno.env.get('GEMINI_API_KEY') || null;
-    apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${aiConfig.model_name || 'gemini-pro'}:generateContent?key=${apiKey}`;
+    apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${aiConfig.model_name || 'gemini-1.5-flash'}:generateContent?key=${apiKey}`;
     headers = {
       'Content-Type': 'application/json',
     };

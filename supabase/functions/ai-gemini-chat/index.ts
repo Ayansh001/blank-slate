@@ -37,7 +37,7 @@ serve(async (req) => {
   }
 
   try {
-    const { message, model = 'gemini-pro', sessionId, context = [], lastContext = '' } = await req.json();
+    const { message, model = 'gemini-1.5-flash', sessionId, context = [], lastContext = '' } = await req.json();
 
     if (!message) {
       return new Response(
