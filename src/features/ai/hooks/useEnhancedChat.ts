@@ -10,13 +10,10 @@ interface EnhancedChatOptions {
   systemPrompt?: string;
 }
 
-const GEMINI_MODEL = 'gemini-pro';
+const GEMINI_MODEL = 'gemini-1.5-flash';
 
 const normalizeGeminiModel = (model?: string | null) => {
-  let normalizedModel = model || GEMINI_MODEL;
-  if (normalizedModel !== GEMINI_MODEL) {
-    normalizedModel = GEMINI_MODEL;
-  }
+  const normalizedModel = model || GEMINI_MODEL;
   console.log('Using Gemini model:', normalizedModel);
   return normalizedModel;
 };

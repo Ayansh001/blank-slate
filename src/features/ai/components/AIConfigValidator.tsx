@@ -28,7 +28,7 @@ export function AIConfigValidator({ provider, onValidationComplete }: AIConfigVa
       case 'openai':
         return 'gpt-4o-mini';
       case 'gemini':
-        return 'gemini-pro';
+        return 'gemini-1.5-flash';
       case 'anthropic':
         return 'claude-3-haiku-20240307';
       default:
@@ -78,7 +78,7 @@ export function AIConfigValidator({ provider, onValidationComplete }: AIConfigVa
       return;
     }
 
-    const model = isGemini ? 'gemini-pro' : modelName || getDefaultModel(provider);
+    const model = isGemini ? 'gemini-1.5-flash' : modelName || getDefaultModel(provider);
     
     try {
       await saveConfig({
@@ -109,7 +109,7 @@ export function AIConfigValidator({ provider, onValidationComplete }: AIConfigVa
           name: 'Google Gemini',
           description: 'Google\'s multimodal AI models',
           keyFormat: 'AIzaSy...',
-          models: ['gemini-pro']
+          models: ['gemini-1.5-flash']
         };
       case 'anthropic':
         return {
@@ -178,7 +178,7 @@ export function AIConfigValidator({ provider, onValidationComplete }: AIConfigVa
         <div className="space-y-2">
           <Label htmlFor="model">Model (Optional)</Label>
           {isGemini ? (
-            <Input id="model" value="gemini-pro" readOnly />
+            <Input id="model" value="gemini-1.5-flash" readOnly />
           ) : (
             <>
               <Input

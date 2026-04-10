@@ -38,7 +38,7 @@ export function SimpleServiceSelector() {
         return;
       }
 
-      const modelName = selectedService === 'openai' ? 'gpt-4.1-mini-2025-04-14' : 'gemini-pro';
+      const modelName = selectedService === 'openai' ? 'gpt-4.1-mini-2025-04-14' : 'gemini-1.5-flash';
       
       await setActiveService({
         service_name: selectedService,

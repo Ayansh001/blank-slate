@@ -7,10 +7,7 @@ export class GeminiProvider extends BaseAIProvider {
     this.validateApiKey();
     this.validateRequest(options);
 
-    let model = this.config.model || 'gemini-pro';
-    if (model !== 'gemini-pro') {
-      model = 'gemini-pro';
-    }
+    const model = this.config.model || 'gemini-1.5-flash';
     console.log('Using Gemini model:', model);
 
     console.log('[AI DEBUG]', {
