@@ -91,18 +91,23 @@ serve(async (req) => {
     // Get API key
     let apiKey: string | null = null;
     const serviceName = configData.service_name.toLowerCase();
+    const dbKey = configData.api_key;
+    const envKey = serviceName === 'openai' ? Deno.env.get('OPENAI_API_KEY') : Deno.env.get('GEMINI_API_KEY');
     
-    if (serviceName === 'openai') {
-      apiKey = configData.api_key || Deno.env.get('OPENAI_API_KEY');
-    } else if (serviceName === 'gemini') {
-      apiKey = configData.api_key || Deno.env.get('GEMINI_API_KEY');
+    if (serviceName === 'openai' || serviceName === 'gemini') {
+      apiKey = dbKey || envKey || null;
     }
 
-    console.log('[concept-learner] Config:', { 
+    console.log('[concept-learner] KEY DIAGNOSTIC:', { 
       service: serviceName, 
       model: configData.model_name,
-      apiKeyExists: !!apiKey,
-      apiKeySource: configData.api_key ? 'db' : 'env'
+      dbKeyPrefix: dbKey?.slice(0, 10) || 'NONE',
+      dbKeyLength: dbKey?.length || 0,
+      envKeyPrefix: envKey?.slice(0, 10) || 'NONE',
+      envKeyLength: envKey?.length || 0,
+      usedKeyPrefix: apiKey?.slice(0, 10) || 'NONE',
+      usedKeyLength: apiKey?.length || 0,
+      source: dbKey ? 'DATABASE' : (envKey ? 'ENV' : 'NONE')
     });
 
     if (!apiKey) {
