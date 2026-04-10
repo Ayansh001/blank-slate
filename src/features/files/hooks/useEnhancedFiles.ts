@@ -452,8 +452,9 @@ export function useEnhancedFiles(folderId?: string) {
     mutationFn: async ({ fileId, updates }: { fileId: string; updates: Partial<FileData> }) => {
       if (!user) throw new Error('User not authenticated');
 
-      // Strip client-only fields not in DB schema
+      // Remove non-database properties before updating
       const { url, thumbnail_url, ...dbUpdates } = updates as any;
+
       const { error } = await supabase
         .from('files')
         .update(dbUpdates)

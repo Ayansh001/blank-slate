@@ -10,6 +10,17 @@ interface EnhancedChatOptions {
   systemPrompt?: string;
 }
 
+const GEMINI_MODEL = 'gemini-pro';
+
+const normalizeGeminiModel = (model?: string | null) => {
+  let normalizedModel = model || GEMINI_MODEL;
+  if (normalizedModel !== GEMINI_MODEL) {
+    normalizedModel = GEMINI_MODEL;
+  }
+  console.log('Using Gemini model:', normalizedModel);
+  return normalizedModel;
+};
+
 export function useEnhancedChat({ sessionId, fileContext, systemPrompt }: EnhancedChatOptions = {}) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
@@ -167,15 +178,15 @@ export function useEnhancedChat({ sessionId, fileContext, systemPrompt }: Enhanc
     setMessages(optimisticMessages);
 
     try {
-      // Get active AI service configuration
+      // Get active AI service configuration (only to determine which edge function to use)
       const { data: configData } = await supabase
         .from('ai_service_configs')
-        .select('*')
+        .select('service_name, model_name')
         .eq('user_id', user.id)
         .eq('is_active', true)
-        .maybeSingle();
+        .single();
 
-      if (!configData?.api_key) {
+      if (!configData) {
         throw new Error('AI service not configured. Please add your API key in AI settings.');
       }
 
@@ -184,11 +195,14 @@ export function useEnhancedChat({ sessionId, fileContext, systemPrompt }: Enhanc
       // Use Supabase client invoke method for edge functions with auth header
       const { data: sessionData } = await supabase.auth.getSession();
       
-      // Determine which edge function to use based on service
+      if (!sessionData.session?.access_token) {
+        throw new Error('You must be logged in to use AI features. Please sign in and try again.');
+      }
+      
+      // Determine which edge function to use based on service - NO apiKey in body
       let edgeFunction = 'universal-ai-handler';
       let requestBody: any = {
         message,
-        apiKey: configData.api_key,
         sessionId,
         context: fileContext?.map(file => ({
           id: file.id,
@@ -198,12 +212,26 @@ export function useEnhancedChat({ sessionId, fileContext, systemPrompt }: Enhanc
       };
 
       if (configData.service_name === 'gemini') {
+        const modelToUse = normalizeGeminiModel(configData.model_name);
+
+        if (configData.model_name !== modelToUse) {
+          const { error: normalizeError } = await supabase
+            .from('ai_service_configs')
+            .update({ model_name: modelToUse })
+            .eq('user_id', user.id)
+            .eq('is_active', true)
+            .eq('service_name', 'gemini');
+
+          if (normalizeError) {
+            console.warn('Failed to normalize Gemini model in database:', normalizeError);
+          }
+        }
+
         edgeFunction = 'ai-gemini-chat';
         requestBody = {
           message,
           lastContext: lastContextSummary,
-          apiKey: configData.api_key,
-          model: configData.model_name || 'gemini-2.0-flash',
+          model: modelToUse,
           sessionId,
           context: fileContext?.map(file => ({
             id: file.id,
@@ -216,7 +244,6 @@ export function useEnhancedChat({ sessionId, fileContext, systemPrompt }: Enhanc
         requestBody = {
           message,
           lastContext: lastContextSummary,
-          apiKey: configData.api_key,
           model: configData.model_name || 'gpt-4o-mini',
           sessionId,
           context: fileContext?.map(file => ({

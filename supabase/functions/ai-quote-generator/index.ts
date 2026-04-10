@@ -178,7 +178,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error generating quotes:', error);
     return new Response(JSON.stringify({ 
-      error: error.message || 'Failed to generate quotes' 
+      error: (error as Error).message || 'Failed to generate quotes' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -224,7 +224,7 @@ async function generateQuotesForCategory(aiConfig: any, category: string): Promi
 
   if (aiConfig.service_name === 'openai') {
     apiUrl = 'https://api.openai.com/v1/chat/completions';
-    const apiKey = aiConfig.api_key || Deno.env.get('OPENAI_API_KEY');
+    const apiKey = aiConfig.api_key || Deno.env.get('OPENAI_API_KEY') || null;
     headers = {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
@@ -245,8 +245,8 @@ async function generateQuotesForCategory(aiConfig: any, category: string): Promi
       temperature: 0.8
     };
   } else if (aiConfig.service_name === 'gemini') {
-    const apiKey = aiConfig.api_key || Deno.env.get('GEMINI_API_KEY');
-    apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${aiConfig.model_name || 'gemini-1.5-flash'}:generateContent?key=${apiKey}`;
+    const apiKey = aiConfig.api_key || Deno.env.get('GEMINI_API_KEY') || null;
+    apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${aiConfig.model_name || 'gemini-pro'}:generateContent?key=${apiKey}`;
     headers = {
       'Content-Type': 'application/json',
     };

@@ -1,5 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+
+console.log('Function loaded: universal-ai-handler');
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -8,25 +10,25 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  console.log('universal-ai-handler invoked:', req.method);
+  console.log('Env check:', {
+    SUPABASE_URL: !!Deno.env.get('SUPABASE_URL'),
+    SUPABASE_SERVICE_ROLE_KEY: !!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+    OPENAI_API_KEY: !!Deno.env.get('OPENAI_API_KEY'),
+    GEMINI_API_KEY: !!Deno.env.get('GEMINI_API_KEY'),
+  });
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Get user from auth
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     )
 
-    const authHeader = req.headers.get('Authorization');
-    let user = null;
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user: authUser } } = await supabaseClient.auth.getUser(token);
-      user = authUser;
-    }
-    
+    const { data: { user } } = await supabaseClient.auth.getUser()
     if (!user) throw new Error('No user found')
 
     const { prompt, mode, content_type, source_id, options } = await req.json()
@@ -49,19 +51,32 @@ serve(async (req) => {
       .single()
 
     if (configError || !aiConfigs) {
-      throw new Error('No active AI service configuration found. Please configure an AI service in Settings.')
+      return new Response(
+        JSON.stringify({ error: 'No active AI service configured', code: 'no_config', requiresConfig: true }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Resolve API key: env secret first, then DB
+    const resolvedKey = resolveApiKey(aiConfigs);
+    if (!resolvedKey) {
+      return new Response(
+        JSON.stringify({ error: `${aiConfigs.service_name} API key not configured`, code: 'no_key', requiresConfig: true }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     console.log('Using AI service:', aiConfigs.service_name)
 
     let result;
+    const configWithKey = { ...aiConfigs, api_key: resolvedKey };
     
     if (aiConfigs.service_name === 'openai') {
-      result = await callOpenAI(prompt, aiConfigs, options)
+      result = await callOpenAI(prompt, configWithKey, options)
     } else if (aiConfigs.service_name === 'gemini') {
-      result = await callGemini(prompt, aiConfigs, options)
+      result = await callGemini(prompt, configWithKey, options)
     } else if (aiConfigs.service_name === 'anthropic') {
-      result = await callAnthropic(prompt, aiConfigs, options)
+      result = await callAnthropic(prompt, configWithKey, options)
     } else {
       throw new Error(`Unsupported AI service: ${aiConfigs.service_name}`)
     }
@@ -79,36 +94,45 @@ serve(async (req) => {
   } catch (error) {
     console.error('Universal AI Handler error:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ error: (error as Error).message, code: 'internal_error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })
 
+function resolveApiKey(config: any): string | null {
+  const serviceName = (config.service_name || '').toLowerCase();
+  
+  if (serviceName === 'openai') {
+    return Deno.env.get('OPENAI_API_KEY') ?? config.api_key ?? null;
+  } else if (serviceName === 'gemini') {
+    return Deno.env.get('GEMINI_API_KEY') ?? config.api_key ?? null;
+  } else if (serviceName === 'anthropic') {
+    return Deno.env.get('ANTHROPIC_API_KEY') ?? config.api_key ?? null;
+  }
+  return config.api_key ?? null;
+}
+
 async function checkUserHistoryPreference(supabaseClient: any, userId: string, mode: string, contentType: string): Promise<boolean> {
   try {
     let featureType = 'usage_tracking';
-    
-    if (mode === 'enhance' && contentType === 'note') featureType = 'note_enhancements'
-    else if (mode === 'enhance' && contentType === 'file') featureType = 'document_analyses'
-    else if (mode === 'quiz') featureType = 'quiz_sessions'
-    else if (mode === 'chat') featureType = 'chat_sessions'
-    else if (mode === 'concept') featureType = 'concept_learning'
+    if (mode === 'enhance' && contentType === 'note') featureType = 'note_enhancements';
+    else if (mode === 'enhance' && contentType === 'file') featureType = 'document_analyses';
+    else if (mode === 'quiz') featureType = 'quiz_sessions';
+    else if (mode === 'chat') featureType = 'chat_sessions';
+    else if (mode === 'concept') featureType = 'concept_learning';
 
     const { data: preference, error } = await supabaseClient
       .from('ai_history_preferences')
       .select('is_enabled')
       .eq('user_id', userId)
       .eq('feature_type', featureType)
-      .maybeSingle()
+      .single()
 
-    if (error) return true
-    return preference?.is_enabled ?? true
-  } catch (error) {
-    return true
+    if (error) return true;
+    return preference?.is_enabled ?? true;
+  } catch {
+    return true;
   }
 }
 
@@ -128,10 +152,13 @@ async function callOpenAI(prompt: string, config: any, options: any) {
   })
 
   if (!response.ok) {
-    const error = await response.text()
-    if (response.status === 401) throw new Error('Invalid OpenAI API key. Please update it in Settings.')
-    if (response.status === 429) throw new Error('OpenAI quota exceeded. Please check billing at platform.openai.com.')
-    throw new Error(`OpenAI API error: ${error}`)
+    const errorText = await response.text();
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Invalid OpenAI API key - please check your configuration');
+    } else if (response.status === 429) {
+      throw new Error('OpenAI rate limit exceeded - please try again later');
+    }
+    throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json()
@@ -139,25 +166,23 @@ async function callOpenAI(prompt: string, config: any, options: any) {
 }
 
 async function callGemini(prompt: string, config: any, options: any) {
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model_name || 'gemini-2.0-flash'}:generateContent?key=${config.api_key}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model_name || 'gemini-pro'}:generateContent?key=${config.api_key}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2000,
-      },
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2000 },
     }),
   })
 
   if (!response.ok) {
-    const error = await response.text()
-    if (response.status === 400 && error.includes('API_KEY_INVALID')) throw new Error('Invalid Gemini API key. Please update it in Settings.')
-    if (response.status === 429) throw new Error('Gemini quota exceeded. Please check billing at Google AI Studio.')
-    throw new Error(`Gemini API error: ${error}`)
+    const errorText = await response.text();
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Invalid Gemini API key - please check your configuration');
+    } else if (response.status === 429) {
+      throw new Error('Gemini rate limit exceeded - please try again later');
+    }
+    throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json()
@@ -180,8 +205,13 @@ async function callAnthropic(prompt: string, config: any, options: any) {
   })
 
   if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Anthropic API error: ${error}`)
+    const errorText = await response.text();
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Invalid Anthropic API key - please check your configuration');
+    } else if (response.status === 429) {
+      throw new Error('Anthropic rate limit exceeded - please try again later');
+    }
+    throw new Error(`Anthropic API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json()
@@ -191,19 +221,16 @@ async function callAnthropic(prompt: string, config: any, options: any) {
 async function saveToDatabase(supabaseClient: any, userId: string, mode: string, contentType: string, sourceId: string, result: any, aiConfig: any) {
   try {
     if (mode === 'enhance' && contentType === 'note') {
-      await supabaseClient
-        .from('note_enhancements')
-        .insert({
-          user_id: userId,
-          note_id: sourceId,
-          enhancement_type: 'summary',
-          original_content: '',
-          enhanced_content: typeof result === 'string' ? { text: result } : result,
-          ai_service: aiConfig.service_name,
-          model_used: aiConfig.model_name || 'unknown',
-        })
+      await supabaseClient.from('note_enhancements').insert({
+        user_id: userId, note_id: sourceId, enhancement_type: 'summary',
+        enhanced_content: result, ai_service: aiConfig.service_name, model_used: aiConfig.model_name,
+      })
+    } else if (mode === 'quiz') {
+      await supabaseClient.from('quiz_sessions').insert({
+        user_id: userId, source_id: sourceId, quiz_data: result,
+        ai_service: aiConfig.service_name, model_used: aiConfig.model_name,
+      })
     }
-    console.log('Successfully saved to database')
   } catch (error) {
     console.error('Error saving to database:', error)
   }

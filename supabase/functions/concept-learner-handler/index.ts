@@ -7,34 +7,57 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function classifyApiError(status: number, errorBody: string): { code: string; message: string } {
+  if (status === 401) {
+    return { code: 'invalid_key', message: 'Invalid API key. Please check your configuration.' };
+  }
+  if (status === 403) {
+    return { code: 'permission_denied', message: 'API key does not have permission for this request.' };
+  }
+  if (status === 429) {
+    if (errorBody.includes('quota') || errorBody.includes('billing')) {
+      return { code: 'quota_exceeded', message: 'API quota exceeded. Please check your billing.' };
+    }
+    return { code: 'rate_limited', message: 'Rate limited. Please wait a moment and try again.' };
+  }
+  if (status === 400) {
+    if (errorBody.includes('model')) {
+      return { code: 'invalid_model', message: 'Invalid model specified. Please check your AI configuration.' };
+    }
+    return { code: 'bad_request', message: `Bad request: ${errorBody.substring(0, 200)}` };
+  }
+  if (status === 404) {
+    return { code: 'invalid_model', message: 'Model not found. Please select a valid model.' };
+  }
+  return { code: 'api_error', message: `API error (${status}): ${errorBody.substring(0, 200)}` };
+}
+
+function jsonResponse(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+
   try {
     const { prompt, mode = 'basic-concept', options = {} } = await req.json();
+    console.log('[concept-learner] Request received:', { prompt: prompt?.substring(0, 50), mode });
     
     if (!prompt) {
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: 'Prompt is required' 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return jsonResponse({ success: false, error: 'Prompt is required', code: 'bad_request' });
     }
 
     // Get auth token
     const authHeader = req.headers.get('authorization');
     if (!authHeader) {
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: 'Authorization required' 
-      }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return jsonResponse({ success: false, error: 'Authorization required', code: 'auth_required' });
     }
 
     const token = authHeader.replace('Bearer ', '');
@@ -46,13 +69,7 @@ serve(async (req) => {
     // Verify user
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: 'Invalid authentication' 
-      }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return jsonResponse({ success: false, error: 'Invalid authentication', code: 'auth_failed' });
     }
 
     // Get active AI config
@@ -64,31 +81,36 @@ serve(async (req) => {
       .maybeSingle();
 
     if (configError || !configData) {
-      return new Response(JSON.stringify({ 
+      return jsonResponse({ 
         success: false, 
-        error: 'No active AI service configured' 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+        error: 'No active AI service configured. Please configure an AI service in Settings.',
+        code: 'no_config'
+      }, 200); // 200 so frontend can read the body
     }
 
     // Get API key
     let apiKey: string | null = null;
-    if (configData.service_name.toLowerCase() === 'openai') {
-      apiKey = Deno.env.get('OPENAI_API_KEY') || configData.api_key;
-    } else if (configData.service_name.toLowerCase() === 'gemini') {
-      apiKey = Deno.env.get('GEMINI_API_KEY') || configData.api_key;
+    const serviceName = configData.service_name.toLowerCase();
+    
+    if (serviceName === 'openai') {
+      apiKey = configData.api_key || Deno.env.get('OPENAI_API_KEY');
+    } else if (serviceName === 'gemini') {
+      apiKey = configData.api_key || Deno.env.get('GEMINI_API_KEY');
     }
 
+    console.log('[concept-learner] Config:', { 
+      service: serviceName, 
+      model: configData.model_name,
+      apiKeyExists: !!apiKey,
+      apiKeySource: configData.api_key ? 'db' : 'env'
+    });
+
     if (!apiKey) {
-      return new Response(JSON.stringify({ 
+      return jsonResponse({ 
         success: false, 
-        error: 'API key not configured' 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+        error: 'API key not configured. Please add your API key in Settings.',
+        code: 'missing_key'
+      }, 200);
     }
 
     const isAdvanced = mode === 'advanced-concept-learning';
@@ -120,9 +142,6 @@ Provide a JSON response with:
 - relatedConcepts: Array of 2-3 related topics
 - studyTips: Array of 2-3 study suggestions`;
 
-    let response;
-    const serviceName = configData.service_name.toLowerCase();
-
     if (serviceName === 'openai') {
       // Use supported OpenAI models
       const modelMapping: Record<string, string> = {
@@ -134,8 +153,9 @@ Provide a JSON response with:
       };
       
       const modelToUse = modelMapping[configData.model_name || 'gpt-4o-mini'] || 'gpt-4o-mini';
+      console.log('[concept-learner] Calling OpenAI:', { model: modelToUse });
 
-      response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -152,67 +172,42 @@ Provide a JSON response with:
         }),
       });
 
+      console.log('[concept-learner] OpenAI response status:', response.status);
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('OpenAI API error:', response.status, errorText);
-        throw new Error(`OpenAI API error: ${response.status}`);
+        console.error('[concept-learner] OpenAI API error:', response.status, errorText);
+        const classified = classifyApiError(response.status, errorText);
+        return jsonResponse({ 
+          success: false, 
+          error: classified.message, 
+          code: classified.code,
+          diagnostics: { provider: 'openai', status: response.status, processingTime: Date.now() - startTime }
+        }, 200); // 200 so frontend can parse the classified error
       }
 
       const data = await response.json();
       const content = data.choices?.[0]?.message?.content;
 
       if (!content) {
-        throw new Error('No content received from OpenAI');
+        return jsonResponse({ 
+          success: false, 
+          error: 'No content received from OpenAI',
+          code: 'empty_response'
+        }, 200);
       }
 
-      try {
-        const parsedResult = JSON.parse(content);
-        
-        // Enhance with mock advanced features if in advanced mode
-        if (isAdvanced && !parsedResult.youtubeVideos) {
-          parsedResult.youtubeVideos = [
-            {
-              id: "mock1",
-              title: `Understanding ${prompt} - Complete Guide`,
-              thumbnail: `https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg`,
-              channel: "Educational Channel",
-              description: `Comprehensive explanation of ${prompt} with examples`,
-              url: `https://youtube.com/watch?v=dQw4w9WgXcQ`
-            }
-          ];
-        }
-
-        return new Response(JSON.stringify({ 
-          success: true, 
-          result: parsedResult 
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-
-      } catch (parseError) {
-        console.error('JSON parse error:', parseError);
-        // Fallback: create structured response from plain text
-        const fallbackResult = {
-          concept: prompt,
-          explanation: content,
-          keyPoints: [`Key aspects of ${prompt}`],
-          examples: [`Example application of ${prompt}`],
-          relatedConcepts: [{ name: "Related topic", relationship: "Connected concept" }],
-          studyTips: [`Study tip for ${prompt}`]
-        };
-        
-        return new Response(JSON.stringify({ 
-          success: true, 
-          result: fallbackResult 
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
+      return jsonResponse({ 
+        success: true, 
+        result: parseConceptContent(content, prompt, isAdvanced),
+        diagnostics: { provider: 'openai', model: modelToUse, processingTime: Date.now() - startTime }
+      });
 
     } else if (serviceName === 'gemini') {
-      const modelToUse = configData.model_name || 'gemini-2.0-flash-exp';
+      const modelToUse = configData.model_name || 'gemini-pro';
+      console.log('[concept-learner] Calling Gemini:', { model: modelToUse });
       
-      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -230,85 +225,97 @@ Provide a JSON response with:
         }),
       });
 
+      console.log('[concept-learner] Gemini response status:', response.status);
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Gemini API error:', response.status, errorText);
-        throw new Error(`Gemini API error: ${response.status}`);
+        console.error('[concept-learner] Gemini API error:', response.status, errorText);
+        const classified = classifyApiError(response.status, errorText);
+        return jsonResponse({ 
+          success: false, 
+          error: classified.message, 
+          code: classified.code,
+          diagnostics: { provider: 'gemini', status: response.status, processingTime: Date.now() - startTime }
+        }, 200);
       }
 
       const data = await response.json();
       
       if (data.error) {
-        throw new Error(`Gemini error: ${data.error.message}`);
+        console.error('[concept-learner] Gemini error in response body:', data.error);
+        return jsonResponse({ 
+          success: false, 
+          error: data.error.message || 'Gemini returned an error',
+          code: 'api_error',
+          diagnostics: { provider: 'gemini', processingTime: Date.now() - startTime }
+        }, 200);
       }
       
       const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (!content) {
-        throw new Error('No content received from Gemini');
+        return jsonResponse({ 
+          success: false, 
+          error: 'No content received from Gemini',
+          code: 'empty_response'
+        }, 200);
       }
 
-      try {
-        const parsedResult = JSON.parse(content);
-        
-        // Enhance with mock advanced features if in advanced mode
-        if (isAdvanced && !parsedResult.youtubeVideos) {
-          parsedResult.youtubeVideos = [
-            {
-              id: "mock1",
-              title: `Understanding ${prompt} - Complete Guide`,
-              thumbnail: `https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg`,
-              channel: "Educational Channel", 
-              description: `Comprehensive explanation of ${prompt} with examples`,
-              url: `https://youtube.com/watch?v=dQw4w9WgXcQ`
-            }
-          ];
-        }
-
-        return new Response(JSON.stringify({ 
-          success: true, 
-          result: parsedResult 
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-
-      } catch (parseError) {
-        console.error('JSON parse error:', parseError);
-        // Fallback: create structured response from plain text
-        const fallbackResult = {
-          concept: prompt,
-          explanation: content,
-          keyPoints: [`Key aspects of ${prompt}`],
-          examples: [`Example application of ${prompt}`],
-          relatedConcepts: [{ name: "Related topic", relationship: "Connected concept" }],
-          studyTips: [`Study tip for ${prompt}`]
-        };
-        
-        return new Response(JSON.stringify({ 
-          success: true, 
-          result: fallbackResult 
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
+      return jsonResponse({ 
+        success: true, 
+        result: parseConceptContent(content, prompt, isAdvanced),
+        diagnostics: { provider: 'gemini', model: modelToUse, processingTime: Date.now() - startTime }
+      });
     }
 
-    return new Response(JSON.stringify({ 
+    return jsonResponse({ 
       success: false, 
-      error: 'Unsupported AI service' 
-    }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+      error: 'Unsupported AI service',
+      code: 'unsupported_service'
+    }, 200);
 
   } catch (error) {
-    console.error('Concept learner error:', error);
-    return new Response(JSON.stringify({ 
+    console.error('[concept-learner] Unhandled error:', (error as Error).message, (error as Error).stack);
+    return jsonResponse({ 
       success: false, 
-      error: error.message || 'Internal server error' 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+      error: (error as Error).message || 'Internal server error',
+      code: 'internal_error',
+      diagnostics: { processingTime: Date.now() - startTime }
+    }, 200); // 200 so frontend can always read the classified error
   }
 });
+
+function parseConceptContent(content: string, prompt: string, isAdvanced: boolean): Record<string, unknown> {
+  try {
+    // Try to extract JSON from markdown code blocks
+    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const jsonStr = jsonMatch ? jsonMatch[1].trim() : content;
+    const parsedResult = JSON.parse(jsonStr);
+    
+    // Enhance with mock advanced features if in advanced mode
+    if (isAdvanced && !parsedResult.youtubeVideos) {
+      parsedResult.youtubeVideos = [
+        {
+          id: "mock1",
+          title: `Understanding ${prompt} - Complete Guide`,
+          thumbnail: `https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg`,
+          channel: "Educational Channel",
+          description: `Comprehensive explanation of ${prompt} with examples`,
+          url: `https://youtube.com/watch?v=dQw4w9WgXcQ`
+        }
+      ];
+    }
+
+    return parsedResult;
+  } catch {
+    console.warn('[concept-learner] JSON parse failed, using fallback structure');
+    return {
+      concept: prompt,
+      explanation: content,
+      keyPoints: [`Key aspects of ${prompt}`],
+      examples: [`Example application of ${prompt}`],
+      relatedConcepts: [{ name: "Related topic", relationship: "Connected concept" }],
+      studyTips: [`Study tip for ${prompt}`]
+    };
+  }
+}

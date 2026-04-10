@@ -18,7 +18,7 @@ export function useQuizTimer(startTime: Date | null) {
     questionTimes: []
   });
 
-  const intervalRef = useRef<NodeJS.Timeout>();
+  const intervalRef = useRef<ReturnType<typeof setInterval>>();
 
   // Debug logging
   console.log('useQuizTimer - startTime:', startTime);

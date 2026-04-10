@@ -221,7 +221,7 @@ serve(async (req) => {
 
         } catch (error) {
           console.error('Stream error:', error);
-          sendEvent({ type: 'error', message: error.message });
+          sendEvent({ type: 'error', message: (error as Error).message });
           controller.close();
         }
       }
@@ -238,7 +238,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('OpenAI chat handler error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: (error as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

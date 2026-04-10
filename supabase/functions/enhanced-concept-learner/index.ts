@@ -115,7 +115,7 @@ Return a JSON object with these exact fields:
     } else {
       // Default to Gemini
       apiKey = Deno.env.get('GEMINI_API_KEY')!;
-      apiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
+      apiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
       
       const promptText = `Create a comprehensive learning package for the concept: "${concept}"
 
@@ -344,7 +344,7 @@ Generate additional flashcard summaries for each key point and example with both
     console.error('Enhanced concept learner error:', error);
     return new Response(JSON.stringify({ 
       success: false, 
-      error: error.message || 'Internal server error' 
+      error: (error as Error).message || 'Internal server error' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

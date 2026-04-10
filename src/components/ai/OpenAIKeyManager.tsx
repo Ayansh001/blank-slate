@@ -5,9 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle, XCircle, Eye, EyeOff, Key, Loader2, Cloud, HardDrive } from 'lucide-react';
-import { openAIConceptLearningService } from '@/services/OpenAIConceptLearningService';
 import { useAuth } from '@/features/auth/hooks/useAuth';
-import { AIServiceManager } from '@/features/ai/services/AIServiceManager';
+import { useAIConfig } from '@/features/ai/hooks/useAIConfig';
 import { toast } from 'sonner';
 
 interface OpenAIKeyManagerProps {
@@ -16,69 +15,83 @@ interface OpenAIKeyManagerProps {
 
 export function OpenAIKeyManager({ onConnectionChange }: OpenAIKeyManagerProps) {
   const { user } = useAuth();
+  const { configs, activeConfig, testAPIKey, isLoading: isConfigLoading } = useAIConfig();
   const [apiKey, setApiKey] = useState('');
   const [savedKey, setSavedKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [hasTestedConnection, setHasTestedConnection] = useState(false);
-  const [keySource, setKeySource] = useState<'backend' | 'local' | 'none'>('none');
   const [hasBackendKey, setHasBackendKey] = useState(false);
   const [useLocalOverride, setUseLocalOverride] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
+  // Sync backend key state from useAIConfig
   useEffect(() => {
-    // Load existing key on mount
-    const initializeKeyState = async () => {
-      // Check for backend key first
-      if (user) {
-        await checkBackendKey();
-      }
-      
-      // Then check local key
-      const existingKey = await openAIConceptLearningService.getApiKey(user?.id);
-      if (existingKey) {
-        setSavedKey(existingKey);
-        setApiKey(existingKey);
-        setKeySource(openAIConceptLearningService.getKeySource());
-        testExistingConnection(existingKey);
-      }
-    };
+    if (isConfigLoading) return;
 
-    initializeKeyState();
-  }, [user]);
+    const openaiConfig = configs.find(config =>
+      config.service_name === 'openai' &&
+      config.is_active === true &&
+      config.api_key
+    );
 
-  const checkBackendKey = async () => {
-    if (!user) return;
-    
-    try {
-      const aiServiceManager = AIServiceManager.getInstance();
-      const configs = await aiServiceManager.getUserAIConfigs(user.id);
-      const openaiConfig = configs.find(config => 
-        config.service_name === 'openai' && 
-        config.is_active === true && 
-        config.api_key
-      );
-      
-      setHasBackendKey(!!openaiConfig);
-    } catch (error) {
-      console.warn('Failed to check backend key:', error);
-      setHasBackendKey(false);
+    const hasKey = !!openaiConfig;
+    setHasBackendKey(hasKey);
+
+    if (hasKey && !useLocalOverride && !hasTestedConnection) {
+      // Backend key exists — test connection through provider pipeline
+      testBackendConnection(openaiConfig!.api_key);
+    } else if (!hasKey) {
+      // No backend key — check localStorage for legacy local key
+      const localKey = localStorage.getItem('openai-api-key');
+      if (localKey && localKey !== 'server-resolved') {
+        setApiKey(localKey);
+        setSavedKey(localKey);
+      }
     }
-  };
+  }, [configs, isConfigLoading, user, useLocalOverride]);
 
-  const testExistingConnection = async (key: string) => {
+  const testBackendConnection = async (backendApiKey: string) => {
     setIsTestingConnection(true);
+    setConnectionError(null);
     try {
-      const connected = await openAIConceptLearningService.testConnection();
-      setIsConnected(connected);
+      const result = await testAPIKey('openai', backendApiKey);
+      setIsConnected(result);
       setHasTestedConnection(true);
-      onConnectionChange?.(connected);
-    } catch (error) {
+      onConnectionChange?.(result);
+      if (result) {
+        toast.success('Backend connection verified');
+      } else {
+        setConnectionError('Connection test failed. Check your API key in AI service settings.');
+      }
+    } catch (error: any) {
       setIsConnected(false);
       setHasTestedConnection(true);
       onConnectionChange?.(false);
+      setConnectionError(getClassifiedErrorMessage(error));
     } finally {
       setIsTestingConnection(false);
+    }
+  };
+
+  const getClassifiedErrorMessage = (error: any): string => {
+    const code = error?.code || '';
+    switch (code) {
+      case 'invalid_key':
+        return 'Invalid API key. Please update your key in AI service settings.';
+      case 'quota_exceeded':
+        return 'API quota exceeded. Check your billing and usage limits.';
+      case 'rate_limited':
+        return 'Rate limited. Please wait a moment and try again.';
+      case 'network_error':
+        return 'Network error. Check your internet connection.';
+      case 'config_error':
+        return 'Configuration error. Check your organization settings.';
+      case 'bad_request':
+        return 'Invalid model or request configuration.';
+      default:
+        return error?.message || 'Connection test failed. Verify your API key and quota.';
     }
   };
 
@@ -95,41 +108,46 @@ export function OpenAIKeyManager({ onConnectionChange }: OpenAIKeyManagerProps) 
     }
 
     setIsTestingConnection(true);
+    setConnectionError(null);
     try {
-      // Test the connection first
-      openAIConceptLearningService.setApiKey(trimmedKey);
-      const connected = await openAIConceptLearningService.testConnection();
-      
+      const connected = await testAPIKey('openai', trimmedKey);
+
       if (connected) {
         setSavedKey(trimmedKey);
+        localStorage.setItem('openai-api-key', trimmedKey);
         setIsConnected(true);
         setHasTestedConnection(true);
         onConnectionChange?.(true);
         toast.success('OpenAI API key saved and verified!');
       } else {
-        openAIConceptLearningService.clearApiKey();
         setIsConnected(false);
         setHasTestedConnection(true);
         onConnectionChange?.(false);
-        toast.error('Invalid API key or connection failed');
+        toast.error('Connection test failed', {
+          description: 'Verify your API key, model selection, and available quota'
+        });
       }
-    } catch (error) {
-      openAIConceptLearningService.clearApiKey();
+    } catch (error: any) {
       setIsConnected(false);
       setHasTestedConnection(true);
       onConnectionChange?.(false);
-      toast.error('Failed to verify API key');
+      const msg = getClassifiedErrorMessage(error);
+      setConnectionError(msg);
+      toast.error('Connection test failed', {
+        description: msg
+      });
     } finally {
       setIsTestingConnection(false);
     }
   };
 
   const handleClearKey = () => {
-    openAIConceptLearningService.clearApiKey();
+    localStorage.removeItem('openai-api-key');
     setApiKey('');
     setSavedKey('');
     setIsConnected(false);
     setHasTestedConnection(false);
+    setConnectionError(null);
     onConnectionChange?.(false);
     toast.success('API key cleared');
   };
@@ -176,12 +194,21 @@ export function OpenAIKeyManager({ onConnectionChange }: OpenAIKeyManagerProps) 
                 <XCircle className="h-4 w-4 text-red-600" />
               )}
               <AlertDescription className="flex items-center gap-2">
-                {keySource === 'local' && <HardDrive className="h-4 w-4" />}
                 {isConnected 
-                  ? `Connected to OpenAI successfully${keySource === 'local' ? ' (local key)' : ''}` 
-                  : 'Not connected to OpenAI. Please check your API key.'
+                  ? 'Connected to OpenAI successfully' 
+                  : connectionError || 'Connection test failed. Verify your API key and quota.'
                 }
               </AlertDescription>
+            </div>
+          </Alert>
+        )}
+
+        {/* Backend connection error */}
+        {hasBackendKey && !useLocalOverride && hasTestedConnection && !isConnected && connectionError && (
+          <Alert variant="destructive">
+            <div className="flex items-center gap-2">
+              <XCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription>{connectionError}</AlertDescription>
             </div>
           </Alert>
         )}
@@ -201,9 +228,8 @@ export function OpenAIKeyManager({ onConnectionChange }: OpenAIKeyManagerProps) 
               onClick={() => {
                 setUseLocalOverride(!useLocalOverride);
                 if (!useLocalOverride) {
-                  // Switching to local override
                   const localKey = localStorage.getItem('openai-api-key');
-                  if (localKey) {
+                  if (localKey && localKey !== 'server-resolved') {
                     setApiKey(localKey);
                     setSavedKey(localKey);
                   }

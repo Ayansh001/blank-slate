@@ -21,13 +21,14 @@ export function AIConfigValidator({ provider, onValidationComplete }: AIConfigVa
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<boolean | null>(null);
   const [modelName, setModelName] = useState('');
+  const isGemini = provider === 'gemini';
 
   const getDefaultModel = (provider: AIServiceProvider) => {
     switch (provider) {
       case 'openai':
         return 'gpt-4o-mini';
       case 'gemini':
-        return 'gemini-2.0-flash';
+        return 'gemini-pro';
       case 'anthropic':
         return 'claude-3-haiku-20240307';
       default:
@@ -77,7 +78,7 @@ export function AIConfigValidator({ provider, onValidationComplete }: AIConfigVa
       return;
     }
 
-    const model = modelName || getDefaultModel(provider);
+    const model = isGemini ? 'gemini-pro' : modelName || getDefaultModel(provider);
     
     try {
       await saveConfig({
@@ -108,7 +109,7 @@ export function AIConfigValidator({ provider, onValidationComplete }: AIConfigVa
           name: 'Google Gemini',
           description: 'Google\'s multimodal AI models',
           keyFormat: 'AIzaSy...',
-          models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
+          models: ['gemini-pro']
         };
       case 'anthropic':
         return {
@@ -176,24 +177,30 @@ export function AIConfigValidator({ provider, onValidationComplete }: AIConfigVa
 
         <div className="space-y-2">
           <Label htmlFor="model">Model (Optional)</Label>
-          <Input
-            id="model"
-            placeholder={`Default: ${getDefaultModel(provider)}`}
-            value={modelName}
-            onChange={(e) => setModelName(e.target.value)}
-          />
-          <div className="flex flex-wrap gap-1">
-            {info.models.map((model) => (
-              <Badge 
-                key={model} 
-                variant="outline" 
-                className="cursor-pointer hover:bg-muted"
-                onClick={() => setModelName(model)}
-              >
-                {model}
-              </Badge>
-            ))}
-          </div>
+          {isGemini ? (
+            <Input id="model" value="gemini-pro" readOnly />
+          ) : (
+            <>
+              <Input
+                id="model"
+                placeholder={`Default: ${getDefaultModel(provider)}`}
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+              />
+              <div className="flex flex-wrap gap-1">
+                {info.models.map((model) => (
+                  <Badge 
+                    key={model} 
+                    variant="outline" 
+                    className="cursor-pointer hover:bg-muted"
+                    onClick={() => setModelName(model)}
+                  >
+                    {model}
+                  </Badge>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         <Button

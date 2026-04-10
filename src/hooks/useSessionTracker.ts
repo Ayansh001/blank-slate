@@ -22,7 +22,7 @@ export function useSessionTracker() {
   const { user } = useAuth();
   const [currentSession, setCurrentSession] = useState<SessionData | null>(null);
   const [isTracking, setIsTracking] = useState(false);
-  const activityTimeoutRef = useRef<NodeJS.Timeout>();
+  const activityTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const lastActivityRef = useRef<Date>(new Date());
 
   // Auto-detect breaks (no activity for 5+ minutes)

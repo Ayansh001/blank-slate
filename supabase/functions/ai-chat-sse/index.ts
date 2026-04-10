@@ -2,6 +2,8 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+console.log('Function loaded: ai-chat-sse');
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -31,6 +33,13 @@ async function checkHistoryPreference(supabase: any, userId: string, featureType
 }
 
 serve(async (req) => {
+  console.log('ai-chat-sse invoked:', req.method);
+  console.log('Env check:', {
+    SUPABASE_URL: !!Deno.env.get('SUPABASE_URL'),
+    SUPABASE_SERVICE_ROLE_KEY: !!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+    OPENAI_API_KEY: !!Deno.env.get('OPENAI_API_KEY'),
+    GEMINI_API_KEY: !!Deno.env.get('GEMINI_API_KEY'),
+  });
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -112,10 +121,10 @@ serve(async (req) => {
     let apiKey: string | null = null;
     
     if (configData.service_name.toLowerCase() === 'openai') {
-      apiKey = Deno.env.get('OPENAI_API_KEY');
+      apiKey = Deno.env.get('OPENAI_API_KEY') || null;
       console.log('OpenAI API key from secrets:', !!apiKey);
     } else if (configData.service_name.toLowerCase() === 'gemini') {
-      apiKey = Deno.env.get('GEMINI_API_KEY');
+      apiKey = Deno.env.get('GEMINI_API_KEY') || null;
       console.log('Gemini API key from secrets:', !!apiKey);
     }
 
@@ -275,7 +284,7 @@ serve(async (req) => {
               }
             }
           } else if (serviceName === 'gemini') {
-            const modelToUse = configData.model_name || 'gemini-2.0-flash-exp';
+            const modelToUse = configData.model_name || 'gemini-pro';
             console.log('Making Gemini request with model:', modelToUse);
             
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKey}`, {
@@ -315,7 +324,7 @@ serve(async (req) => {
             
             if (geminiData.error) {
               console.error('Gemini API returned error:', geminiData.error);
-              throw new Error(`Gemini error: ${geminiData.error.message || 'Unknown error'}`);
+              throw new Error(`Gemini error: ${geminiData.error?.message || 'Unknown error'}`);
             }
             
             const content = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
@@ -370,7 +379,7 @@ serve(async (req) => {
 
         } catch (error) {
           console.error('Stream error:', error);
-          sendEvent({ type: 'error', message: error.message });
+          sendEvent({ type: 'error', message: (error as Error).message });
           controller.close();
         }
       }
@@ -387,7 +396,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('SSE error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: (error as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

@@ -5,15 +5,19 @@ import { AnthropicProvider } from './AnthropicProvider';
 
 export class AIProviderFactory {
   static createProvider(config: AIProviderConfig): AIProviderInterface {
-    switch (config.provider) {
+    const normalizedConfig = config.provider === 'gemini'
+      ? { ...config, model: 'gemini-pro' }
+      : config;
+
+    switch (normalizedConfig.provider) {
       case 'openai':
-        return new OpenAIProvider(config);
+        return new OpenAIProvider(normalizedConfig);
       case 'gemini':
-        return new GeminiProvider(config);
+        return new GeminiProvider(normalizedConfig);
       case 'anthropic':
-        return new AnthropicProvider(config);
+        return new AnthropicProvider(normalizedConfig);
       default:
-        throw new Error(`Unsupported AI provider: ${config.provider}`);
+        throw new Error(`Unsupported AI provider: ${normalizedConfig.provider}`);
     }
   }
 
@@ -24,7 +28,7 @@ export class AIProviderFactory {
   static getDefaultModels(): Record<AIProvider, string> {
     return {
       openai: 'gpt-4o-mini',
-      gemini: 'gemini-1.5-flash',
+      gemini: 'gemini-pro',
       anthropic: 'claude-3-haiku-20240307',
     };
   }

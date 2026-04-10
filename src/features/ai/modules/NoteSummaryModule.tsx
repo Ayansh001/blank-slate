@@ -7,7 +7,26 @@ import { useAIProvider } from '../hooks/useAIProvider';
 import { AIProviderFactory } from '../providers/AIProviderFactory';
 import { EnhancementResult } from '../types/providers';
 import { logger } from '../utils/DebugLogger';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
+
+// Classified error toast helper
+function showClassifiedError(error: any, fallbackTitle: string) {
+  const code = error?.code || '';
+  const msg = error?.message || 'Unknown error';
+  if (code === 'invalid_key') {
+    toast.error('Invalid API key', { description: 'Check your API key in Settings → AI Configuration' });
+  } else if (code === 'quota_exceeded') {
+    toast.error('API quota exceeded', { description: 'Check your billing or try again later' });
+  } else if (code === 'rate_limited') {
+    toast.error('Rate limited', { description: 'Please wait a moment and try again' });
+  } else if (code === 'network_error') {
+    toast.error('Network error', { description: 'Check your internet connection and try again' });
+  } else if (code === 'config_error') {
+    toast.error('Configuration error', { description: 'Check your AI provider settings' });
+  } else {
+    toast.error(fallbackTitle, { description: msg });
+  }
+}
 
 interface NoteSummaryModuleProps {
   content: string;
@@ -27,11 +46,7 @@ export const NoteSummaryModule: React.FC<NoteSummaryModuleProps> = ({
 
   const generateSummary = async () => {
     if (!content.trim()) {
-      toast({
-        title: "No content",
-        description: "Please provide content to summarize.",
-        variant: "destructive",
-      });
+      toast.error('No content', { description: 'Please provide content to summarize.' });
       return;
     }
 
@@ -47,14 +62,14 @@ export const NoteSummaryModule: React.FC<NoteSummaryModuleProps> = ({
 
       const config = await getProviderConfig();
       if (!config) {
-        throw new Error(`No configuration found for ${selectedProvider} provider`);
+        toast.error('No API key configured', { description: 'Go to Settings → AI Configuration to add your key.' });
+        return;
       }
 
       const provider = AIProviderFactory.createProvider(config);
-      const summary = await provider.generateSummary(content); // Now returns string directly
+      const summary = await provider.generateSummary(content);
 
-      const endTime = Date.now();
-      const duration = endTime - startTime;
+      const duration = Date.now() - startTime;
       setProcessingTime(duration);
 
       const enhancementResult: EnhancementResult<string> = {
@@ -68,21 +83,15 @@ export const NoteSummaryModule: React.FC<NoteSummaryModuleProps> = ({
       setResult(enhancementResult);
       onSummaryGenerated?.(summary);
 
-      logger.info('NoteSummaryModule', 'Summary generated successfully', {
-        provider: selectedProvider,
-        processingTime: duration,
-        summaryLength: summary.length,
-      });
-
-      toast({
-        title: "Summary generated",
+      toast.success('Summary generated', {
         description: `Generated in ${(duration / 1000).toFixed(1)}s using ${selectedProvider}`,
       });
-    } catch (error) {
+    } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      
+
       logger.error('NoteSummaryModule', 'Failed to generate summary', {
         error: errorMessage,
+        code: error?.code,
         provider: selectedProvider,
       });
 
@@ -92,11 +101,7 @@ export const NoteSummaryModule: React.FC<NoteSummaryModuleProps> = ({
         provider: selectedProvider || 'openai',
       });
 
-      toast({
-        title: "Summary generation failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      showClassifiedError(error, 'Summary generation failed');
     } finally {
       setIsGenerating(false);
     }

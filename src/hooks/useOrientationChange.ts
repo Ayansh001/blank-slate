@@ -14,7 +14,7 @@ export function useOrientationChange() {
   }));
 
   useEffect(() => {
-    let changeTimeout: NodeJS.Timeout;
+    let changeTimeout: ReturnType<typeof setTimeout>;
 
     const handleOrientationChange = () => {
       // Mark as changing

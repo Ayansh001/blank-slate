@@ -21,7 +21,7 @@ serve(async (req) => {
       );
     }
 
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY') || null;
     if (!geminiApiKey) {
       return new Response(
         JSON.stringify({ error: 'Gemini API key not configured' }),
@@ -36,7 +36,7 @@ Format your response as JSON:
   "summary": "Your 2-3 sentence summary here"
 }`;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -96,7 +96,7 @@ Format your response as JSON:
     console.error('Error in concept-summary-handler:', error);
     return new Response(
       JSON.stringify({
-        error: error.message || 'Failed to generate concept summary'
+        error: (error as Error).message || 'Failed to generate concept summary'
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

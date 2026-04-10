@@ -74,7 +74,7 @@ serve(async (req) => {
     }
 
     if (!apiKey) {
-      apiKey = Deno.env.get('OPENAI_API_KEY');
+      apiKey = Deno.env.get('OPENAI_API_KEY') || null;
     }
 
     if (!apiKey) {
@@ -285,7 +285,7 @@ Return a JSON object with these exact fields:
     console.error('Enhanced concept learner error:', error);
     return new Response(JSON.stringify({ 
       success: false, 
-      error: error.message || 'Internal server error' 
+      error: (error as Error).message || 'Internal server error' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

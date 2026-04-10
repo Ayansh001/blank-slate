@@ -133,7 +133,7 @@ export function AIConfigPanel() {
               <SelectContent>
                 <SelectItem value="openai">OpenAI (GPT-4o, GPT-4o Mini)</SelectItem>
                 <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
-                <SelectItem value="gemini">Google Gemini (2.0 Flash, 1.5 Pro)</SelectItem>
+                <SelectItem value="gemini">Google Gemini (Pro)</SelectItem>
               </SelectContent>
             </Select>
           </div>

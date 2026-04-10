@@ -8,7 +8,23 @@ import { useAIProvider } from '../hooks/useAIProvider';
 import { AIProviderFactory } from '../providers/AIProviderFactory';
 import { EnhancementResult } from '../types/providers';
 import { logger } from '../utils/DebugLogger';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
+
+function showClassifiedError(error: any, fallbackTitle: string) {
+  const code = error?.code || '';
+  const msg = error?.message || 'Unknown error';
+  if (code === 'invalid_key') {
+    toast.error('Invalid API key', { description: 'Check your API key in Settings → AI Configuration' });
+  } else if (code === 'quota_exceeded') {
+    toast.error('API quota exceeded', { description: 'Check your billing or try again later' });
+  } else if (code === 'rate_limited') {
+    toast.error('Rate limited', { description: 'Please wait a moment and try again' });
+  } else if (code === 'network_error') {
+    toast.error('Network error', { description: 'Check your internet connection and try again' });
+  } else {
+    toast.error(fallbackTitle, { description: msg });
+  }
+}
 
 interface NoteQuestionsModuleProps {
   content: string;
@@ -28,11 +44,7 @@ export const NoteQuestionsModule: React.FC<NoteQuestionsModuleProps> = ({
 
   const generateQuestions = async () => {
     if (!content.trim()) {
-      toast({
-        title: "No content",
-        description: "Please provide content to generate study questions from.",
-        variant: "destructive",
-      });
+      toast.error('No content', { description: 'Please provide content to generate study questions from.' });
       return;
     }
 
@@ -48,12 +60,12 @@ export const NoteQuestionsModule: React.FC<NoteQuestionsModuleProps> = ({
 
       const config = await getProviderConfig();
       if (!config) {
-        throw new Error(`No configuration found for ${selectedProvider} provider`);
+        toast.error('No API key configured', { description: 'Go to Settings → AI Configuration to add your key.' });
+        return;
       }
 
       const provider = AIProviderFactory.createProvider(config);
       
-      // Enhanced prompt to generate questions with answers
       const prompt = `Generate 5-8 thoughtful study questions with detailed answers based on the following content. 
 
 Return your response as valid JSON in this exact format:
@@ -86,20 +98,17 @@ CRITICAL: Every question MUST have a corresponding answer. Make answers educatio
         temperature: 0.6
       });
 
-      const endTime = Date.now();
-      const duration = endTime - startTime;
+      const duration = Date.now() - startTime;
       setProcessingTime(duration);
 
-      // Log raw AI response for debugging
-      console.log('Raw AI response content:', response.content);
+      console.log('[NoteQuestionsModule] Raw AI response content:', response.content);
 
-      // Parse the response to get structured questions
       let parsedQuestions;
       try {
         parsedQuestions = JSON.parse(response.content);
-        console.log('Successfully parsed AI response:', parsedQuestions);
+        console.log('[NoteQuestionsModule] Parsed AI response:', parsedQuestions);
       } catch (parseError) {
-        console.error('Failed to parse questions response:', response.content);
+        console.error('[NoteQuestionsModule] Failed to parse questions response:', response.content);
         throw new Error('Failed to parse questions response');
       }
 
@@ -113,7 +122,6 @@ CRITICAL: Every question MUST have a corresponding answer. Make answers educatio
 
       setResult(enhancementResult);
       
-      // For backward compatibility, also call the original callback with just question strings
       if (onQuestionsGenerated) {
         const questionStrings = [
           ...(parsedQuestions.studyQuestions || []).map((q: any) => q.question),
@@ -122,22 +130,15 @@ CRITICAL: Every question MUST have a corresponding answer. Make answers educatio
         onQuestionsGenerated(questionStrings);
       }
 
-      logger.info('NoteQuestionsModule', 'Questions generated successfully', {
-        provider: selectedProvider,
-        processingTime: duration,
-        studyQuestions: parsedQuestions.studyQuestions?.length || 0,
-        reviewQuestions: parsedQuestions.reviewQuestions?.length || 0,
-      });
-
-      toast({
-        title: "Study questions generated",
+      toast.success('Study questions generated', {
         description: `Generated ${(parsedQuestions.studyQuestions?.length || 0) + (parsedQuestions.reviewQuestions?.length || 0)} questions with answers in ${(duration / 1000).toFixed(1)}s`,
       });
-    } catch (error) {
+    } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       
       logger.error('NoteQuestionsModule', 'Failed to generate questions', {
         error: errorMessage,
+        code: error?.code,
         provider: selectedProvider,
       });
 
@@ -147,11 +148,7 @@ CRITICAL: Every question MUST have a corresponding answer. Make answers educatio
         provider: selectedProvider || 'openai',
       });
 
-      toast({
-        title: "Question generation failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      showClassifiedError(error, 'Question generation failed');
     } finally {
       setIsGenerating(false);
     }
@@ -210,7 +207,6 @@ CRITICAL: Every question MUST have a corresponding answer. Make answers educatio
           <div className="space-y-3">
             {result.success && result.data ? (
               <div className="space-y-4">
-                {/* Study Questions */}
                 {result.data.studyQuestions && result.data.studyQuestions.length > 0 && (
                   <div>
                     <h4 className="font-medium mb-2">Study Questions</h4>
@@ -242,7 +238,6 @@ CRITICAL: Every question MUST have a corresponding answer. Make answers educatio
                   </div>
                 )}
 
-                {/* Review Questions */}
                 {result.data.reviewQuestions && result.data.reviewQuestions.length > 0 && (
                   <div>
                     <h4 className="font-medium mb-2">Quick Review Questions</h4>

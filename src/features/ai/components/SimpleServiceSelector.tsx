@@ -38,7 +38,7 @@ export function SimpleServiceSelector() {
         return;
       }
 
-      const modelName = selectedService === 'openai' ? 'gpt-4.1-mini-2025-04-14' : 'gemini-2.0-flash';
+      const modelName = selectedService === 'openai' ? 'gpt-4.1-mini-2025-04-14' : 'gemini-pro';
       
       await setActiveService({
         service_name: selectedService,
@@ -104,7 +104,7 @@ export function SimpleServiceSelector() {
                 ChatGPT (GPT-4o Mini) - Fast & Reliable
               </SelectItem>
               <SelectItem value="gemini">
-                Google Gemini (2.0 Flash) - Advanced & Free
+                Google Gemini (Pro) - Advanced & Free
               </SelectItem>
             </SelectContent>
           </Select>

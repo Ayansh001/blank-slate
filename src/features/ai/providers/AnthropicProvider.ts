@@ -11,10 +11,9 @@ export class AnthropicProvider extends BaseAIProvider {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
-          'x-api-key': this.config.apiKey,
+          'Authorization': `Bearer ${this.config.apiKey}`,
           'Content-Type': 'application/json',
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
+          'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
           model: this.config.model,

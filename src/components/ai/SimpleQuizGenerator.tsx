@@ -17,7 +17,7 @@ import {
 import { HamsterWheelIcon } from '@/components/ui/HamsterWheelIcon';
 import { QuizGeneratingLoader } from '@/components/ui/QuizGeneratingLoader';
 import { useAuth } from '@/features/auth/hooks/useAuth';
-import { useAIConfig } from '@/features/ai/hooks/useAIConfig';
+import { useAIProvider } from '@/features/ai/hooks/useAIProvider';
 import { useAIHistoryPreferences } from '@/hooks/useAIHistoryPreferences';
 import { useQuizTimer } from '@/hooks/useQuizTimer';
 import { ProminentQuizTimer } from '@/features/ai/components/ProminentQuizTimer';
@@ -51,7 +51,7 @@ interface Quiz {
 
 export function SimpleQuizGenerator({ content, source }: SimpleQuizGeneratorProps) {
   const { user } = useAuth();
-  const { activeConfig } = useAIConfig();
+  const { selectedProvider, getProviderConfig } = useAIProvider();
   const { getPreference } = useAIHistoryPreferences();
   
   // UI Protection: Validate props match the locked interface
@@ -129,8 +129,8 @@ export function SimpleQuizGenerator({ content, source }: SimpleQuizGeneratorProp
       return;
     }
 
-    if (!activeConfig) {
-      toast.error('Please configure an AI service in Settings first');
+    if (!selectedProvider) {
+      toast.error('Please select an AI provider first');
       return;
     }
 
@@ -140,12 +140,14 @@ export function SimpleQuizGenerator({ content, source }: SimpleQuizGeneratorProp
     try {
       logger.info('SimpleQuizGenerator', 'Starting quiz generation', { questionCount, quizType, difficulty });
       
-      // Create provider from unified config
-      const provider = AIProviderFactory.createProvider({
-        provider: activeConfig.service_name as 'openai' | 'gemini' | 'anthropic',
-        apiKey: activeConfig.api_key!,
-        model: activeConfig.model_name,
-      });
+      // Get provider configuration
+      const providerConfig = await getProviderConfig();
+      if (!providerConfig) {
+        throw new Error('No AI provider configuration available');
+      }
+
+      // Create provider instance
+      const provider = AIProviderFactory.createProvider(providerConfig);
 
       // Generate appropriate prompt based on quiz type
       let prompt;
@@ -217,9 +219,18 @@ Content: ${content.slice(0, 3000)}`;
       logger.info('SimpleQuizGenerator', 'Quiz generated successfully', { questionsCount: parsedQuiz.questions.length });
     } catch (error: any) {
       logger.error('SimpleQuizGenerator', 'Quiz generation failed', error);
-      toast.error('Quiz generation failed', {
-        description: error.message || 'Please try again'
-      });
+      const code = error?.code || '';
+      if (code === 'invalid_key') {
+        toast.error('Invalid API key', { description: 'Check your API key in Settings → AI Configuration' });
+      } else if (code === 'quota_exceeded') {
+        toast.error('API quota exceeded', { description: 'Check your billing or try again later' });
+      } else if (code === 'rate_limited') {
+        toast.error('Rate limited', { description: 'Please wait a moment and try again' });
+      } else if (code === 'network_error') {
+        toast.error('Network error', { description: 'Check your internet connection' });
+      } else {
+        toast.error('Quiz generation failed', { description: error.message || 'Please try again' });
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -281,8 +292,8 @@ Content: ${content.slice(0, 3000)}`;
         score: finalScore,
         time_spent_minutes: timeSpent,
         completed: true,
-        ai_service: activeConfig?.service_name || 'openai',
-        model_used: activeConfig?.model_name || 'gpt-4o-mini'
+        ai_service: selectedProvider || 'openai',
+        model_used: 'gpt-4o-mini'
       }).catch(error => {
         // Silent error handling - don't disrupt quiz experience
         console.warn('History save failed (non-critical):', error);

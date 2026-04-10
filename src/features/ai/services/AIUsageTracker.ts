@@ -10,7 +10,7 @@ interface UsageMetrics {
 export class AIUsageTracker {
   private static instance: AIUsageTracker;
   private usageQueue: UsageMetrics[] = [];
-  private flushInterval: NodeJS.Timeout | null = null;
+  private flushInterval: ReturnType<typeof setInterval> | null = null;
 
   static getInstance(): AIUsageTracker {
     if (!AIUsageTracker.instance) {

@@ -46,7 +46,7 @@ serve(async (req) => {
     }
 
     // Get API key from environment
-    const apiKey = Deno.env.get('OPENAI_API_KEY');
+    const apiKey = Deno.env.get('OPENAI_API_KEY') || null;
     if (!apiKey) {
       return new Response(
         JSON.stringify({ error: 'OpenAI API key not configured' }),
@@ -55,8 +55,8 @@ serve(async (req) => {
     }
 
     // Create Supabase client for auth  
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || null;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || null;
     
     if (!supabaseUrl || !supabaseAnonKey) {
       console.error('Missing Supabase configuration');
@@ -208,7 +208,7 @@ serve(async (req) => {
       
     } catch (error) {
       clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
+      if ((error as Error).name === 'AbortError') {
         throw new Error('Request timed out - please try again with shorter content');
       }
       throw error;
@@ -226,29 +226,29 @@ serve(async (req) => {
     let errorMessage = 'Enhancement generation failed';
     let statusCode = 500;
     
-    if (error.message?.includes('authentication') || error.message?.includes('Invalid authentication')) {
+    if ((error as Error).message?.includes('authentication') || (error as Error).message?.includes('Invalid authentication')) {
       errorMessage = 'Authentication failed. Please log in again.';
       statusCode = 401;
-    } else if (error.message?.includes('API key')) {
+    } else if ((error as Error).message?.includes('API key')) {
       errorMessage = 'AI service configuration error. Please check settings.';
       statusCode = 500;
-    } else if (error.message?.includes('Rate limit')) {
+    } else if ((error as Error).message?.includes('Rate limit')) {
       errorMessage = 'Rate limit exceeded. Please wait a moment and try again.';
       statusCode = 429;
-    } else if (error.message?.includes('timeout')) {
+    } else if ((error as Error).message?.includes('timeout')) {
       errorMessage = 'Request timed out. Please try with shorter content.';
       statusCode = 408;
-    } else if (error.message?.includes('JSON')) {
+    } else if ((error as Error).message?.includes('JSON')) {
       errorMessage = 'AI response format error. Please try again.';
       statusCode = 500;
-    } else if (error.message) {
-      errorMessage = error.message;
+    } else if ((error as Error).message) {
+      errorMessage = (error as Error).message;
     }
     
     return new Response(
       JSON.stringify({ 
         error: errorMessage,
-        details: error.message || 'Please try again or contact support if the issue persists'
+        details: (error as Error).message || 'Please try again or contact support if the issue persists'
       }),
       { status: statusCode, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { EnhancedAIChat } from '@/features/ai/components/EnhancedAIChat';
 import { ContextualChat } from '@/components/ai/ContextualChat';
-import { UnifiedAIServiceSelector } from '@/features/ai/components/UnifiedAIServiceSelector';
+import { SimpleServiceSelector } from '@/features/ai/components/SimpleServiceSelector';
 import { QuickServiceSwitcher } from '@/features/ai/components/QuickServiceSwitcher';
 import { ChatSessionDrawer } from '@/features/ai/components/ChatSessionDrawer';
 import { EnhancedConceptLearner } from '@/features/concept-learner/components/EnhancedConceptLearner';
@@ -299,7 +299,7 @@ export default function AIChat() {
           </div>
         </div>
 
-        <UnifiedAIServiceSelector />
+        <SimpleServiceSelector />
         
         {activeConfig && (
           <div className="flex justify-center">

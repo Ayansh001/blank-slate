@@ -99,7 +99,7 @@ serve(async (req) => {
         results.push({
           fileId: file.id,
           fileName: file.name,
-          error: error.message
+          error: (error as Error).message
         });
       }
     }
@@ -124,7 +124,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Content analysis error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as Error).message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -151,7 +151,7 @@ async function analyzeContent(file: any, analysisType: string, supabase: any, us
 
   const prompt = createAnalysisPrompt(content, file.name, analysisType);
   const serviceName = configData.service_name.toLowerCase();
-  const apiKey = configData.api_key;
+  const apiKey = Deno.env.get(serviceName === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY') || configData.api_key;
 
   if (serviceName === 'openai') {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -190,10 +190,9 @@ async function analyzeContent(file: any, analysisType: string, supabase: any, us
       throw new Error('Failed to parse analysis content as JSON');
     }
   } else if (serviceName === 'gemini') {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${configData.model_name || 'gemini-2.0-flash'}:generateContent`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${configData.model_name || 'gemini-pro'}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
-        'X-goog-api-key': apiKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -261,7 +260,7 @@ async function findContentRelationships(files: any[], results: any[], userId: st
       const topics1 = result1.analysis.topics || [];
       const topics2 = result2.analysis.topics || [];
       
-      const commonTopics = topics1.filter(topic => topics2.includes(topic));
+      const commonTopics = topics1.filter((topic: any) => topics2.includes(topic));
       
       if (commonTopics.length > 0) {
         const relationship = {

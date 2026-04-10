@@ -27,7 +27,7 @@ serve(async (req) => {
     })
 
     // Get OpenAI API key from environment
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY') || null
     if (!openaiApiKey) {
       throw new Error('OpenAI API key not configured')
     }
@@ -142,7 +142,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Quiz generation failed',
+        error: (error as Error).message || 'Quiz generation failed',
         fallback: {
           title: 'Sample Quiz',
           description: 'A basic quiz to test your knowledge',

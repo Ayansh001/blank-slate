@@ -67,18 +67,6 @@ export function useAIConfig() {
   };
 
   const activeConfig = configs.find(config => config.is_active);
-  
-  // Diagnostic: verify api_key is returned from DB (not blocked by RLS)
-  useEffect(() => {
-    if (activeConfig) {
-      console.log('AI Config active:', {
-        provider: activeConfig.service_name,
-        hasApiKey: !!activeConfig.api_key,
-        keyPrefix: activeConfig.api_key?.substring(0, 8) + '...',
-        isActive: activeConfig.is_active
-      });
-    }
-  }, [activeConfig]);
   const serviceCapabilities = aiServiceManager.getAllServiceCapabilities();
 
   const validateAPIKey = (provider: AIServiceProvider, apiKey: string): boolean => {

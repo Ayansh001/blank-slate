@@ -19,7 +19,7 @@ import {
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useAIProvider } from '@/features/ai/hooks/useAIProvider';
 import { AIProviderFactory } from '../providers/AIProviderFactory';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 interface Question {
   id: string;
@@ -139,19 +139,23 @@ Make sure each question has exactly 4 options and the correctAnswer is the index
       setSelectedAnswer(null);
       setShowResults(false);
 
-      toast({
-        title: "Quiz Generated",
+      toast.success('Quiz Generated', {
         description: `${validQuestions.length} questions ready to answer`
       });
 
     } catch (error: any) {
-      console.error('Quiz generation error:', error);
+      console.error('[MultipleChoiceQuizModule] Quiz generation error:', error);
       setError(error.message || 'Failed to generate quiz');
-      toast({
-        title: "Generation Failed",
-        description: error.message || 'Please try again',
-        variant: "destructive"
-      });
+      const code = error?.code || '';
+      if (code === 'invalid_key') {
+        toast.error('Invalid API key', { description: 'Check your API key in Settings → AI Configuration' });
+      } else if (code === 'quota_exceeded') {
+        toast.error('API quota exceeded', { description: 'Check your billing or try again later' });
+      } else if (code === 'network_error') {
+        toast.error('Network error', { description: 'Check your internet connection' });
+      } else {
+        toast.error('Generation Failed', { description: error.message || 'Please try again' });
+      }
     } finally {
       setIsGenerating(false);
     }

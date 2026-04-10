@@ -125,10 +125,10 @@ serve(async (req) => {
     const serviceName = configData.service_name.toLowerCase();
     
     if (serviceName === 'openai') {
-      apiKey = Deno.env.get('OPENAI_API_KEY');
+      apiKey = Deno.env.get('OPENAI_API_KEY') || null;
       console.log('OpenAI API key from secrets:', !!apiKey);
     } else if (serviceName === 'gemini') {
-      apiKey = Deno.env.get('GEMINI_API_KEY');
+      apiKey = Deno.env.get('GEMINI_API_KEY') || null;
       console.log('Gemini API key from secrets:', !!apiKey);
     }
 
@@ -222,12 +222,11 @@ serve(async (req) => {
         throw new Error('AI returned invalid JSON format - please try again');
       }
     } else if (serviceName === 'gemini') {
-      console.log('Using Gemini with model:', configData.model_name || 'gemini-2.0-flash');
+      console.log('Using Gemini with model:', configData.model_name || 'gemini-pro');
       
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${configData.model_name || 'gemini-2.0-flash'}:generateContent`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${configData.model_name || 'gemini-pro'}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
-          'X-goog-api-key': apiKey,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -333,7 +332,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Quiz generation error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as Error).message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

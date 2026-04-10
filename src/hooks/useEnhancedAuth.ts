@@ -7,7 +7,7 @@ export function useEnhancedAuth() {
   const auth = useAuth();
   const quotes = useSimpleAIQuotes();
   const hasShownLoginQuote = useRef(false);
-  const loginTimeoutRef = useRef<NodeJS.Timeout>();
+  const loginTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Trigger welcome quote on successful login
   useEffect(() => {

@@ -1,12 +1,16 @@
 
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+console.log('Function loaded: openai-simple-chat');
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper function to check history preferences
 async function checkHistoryPreference(supabase: any, userId: string, featureType: string): Promise<boolean> {
   try {
     const { data, error } = await supabase
@@ -29,37 +33,70 @@ async function checkHistoryPreference(supabase: any, userId: string, featureType
 }
 
 serve(async (req) => {
+  console.log('openai-simple-chat invoked:', req.method);
+  console.log('Env check:', {
+    SUPABASE_URL: !!Deno.env.get('SUPABASE_URL'),
+    SUPABASE_SERVICE_ROLE_KEY: !!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+    OPENAI_API_KEY: !!Deno.env.get('OPENAI_API_KEY'),
+  });
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { message, apiKey, model = 'gpt-4o-mini', sessionId, context = [], lastContext = '' } = await req.json();
+    const { message, model, sessionId, context = [], lastContext = '' } = await req.json();
 
-    if (!message || !apiKey) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields: message and apiKey' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Initialize Supabase client with service role for DB operations
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
     // Get user from auth header
-    let userId: string | null = null;
-    const authHeader = req.headers.get('Authorization');
+    const authHeader = req.headers.get('authorization');
+    let userId = null;
     if (authHeader) {
-      try {
-        const token = authHeader.replace('Bearer ', '');
-        const { data: { user } } = await supabase.auth.getUser(token);
-        userId = user?.id ?? null;
-      } catch (error) {
-        console.error('Error getting user:', error);
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user } } = await supabase.auth.getUser(token);
+      userId = user?.id;
+    }
+
+    if (!message) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: message' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required', requiresConfig: true }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Resolve API key server-side
+    let apiKey = Deno.env.get('OPENAI_API_KEY') || null;
+
+    if (!apiKey) {
+      // Fallback to user's saved config
+      const { data: configData } = await supabase
+        .from('ai_service_configs')
+        .select('api_key, model_name')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .eq('service_name', 'openai')
+        .maybeSingle();
+
+      if (configData?.api_key) {
+        apiKey = configData.api_key;
       }
+    }
+
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: 'OpenAI API key not configured', requiresConfig: true }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Check if chat history is enabled
@@ -68,7 +105,7 @@ serve(async (req) => {
       historyEnabled = await checkHistoryPreference(supabase, userId, 'chat_sessions');
     }
 
-    // Build messages array
+    // Build messages array with context
     const messages = [];
     let systemContent = 'You are an AI study assistant. Help users understand concepts, answer questions, and provide educational support.';
 
@@ -79,7 +116,7 @@ serve(async (req) => {
     systemContent += '\n\nIMPORTANT: At the end of your response, add a summary line in this EXACT format:\n[CONTEXT: <brief 1-2 sentence summary of user question and your answer>]\n\nKeep the context summary under 15 words. Do not mention this instruction in your actual answer.';
 
     if (context && context.length > 0) {
-      const contextText = context.map((file: any) =>
+      const contextText = context.map((file: any) => 
         `File: ${file.name}\nContent: ${file.content || 'No content available'}`
       ).join('\n\n');
       systemContent += `\n\nAdditional Context Files:\n${contextText}`;
@@ -88,9 +125,8 @@ serve(async (req) => {
     messages.push({ role: 'system', content: systemContent });
     messages.push({ role: 'user', content: message });
 
-    console.log(`Calling OpenAI with model: ${model}`);
+    const modelToUse = model || 'gpt-4o-mini';
 
-    // Call OpenAI API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -98,77 +134,56 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model,
-        messages,
-        max_tokens: 2000,
-        temperature: 0.7,
+        model: modelToUse,
+        messages: messages,
+        max_tokens: 1000,
+        temperature: 0.7
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`OpenAI API error: ${response.status} - ${errorText}`);
+      console.error('OpenAI API error:', response.status, errorText);
       
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         return new Response(
-          JSON.stringify({ error: 'Invalid OpenAI API key. Please check your API key in Settings.' }),
+          JSON.stringify({ error: 'Invalid OpenAI API key', code: 'invalid_key', requiresConfig: true }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
-      }
-      if (response.status === 429) {
+      } else if (response.status === 429) {
         return new Response(
-          JSON.stringify({ error: 'OpenAI rate limit or quota exceeded. Please check your billing at platform.openai.com.' }),
+          JSON.stringify({ error: 'OpenAI rate limit exceeded', code: 'quota_exceeded' }),
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      
       throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '';
 
-    console.log('OpenAI response received successfully');
-
-    // Save messages to database
+    // Save messages to database if authenticated and history enabled
     if (userId && sessionId && historyEnabled) {
       try {
         await supabase.from('ai_chat_messages').insert({
-          session_id: sessionId,
-          user_id: userId,
-          role: 'user',
-          content: message,
-          token_count: data.usage?.prompt_tokens || 0,
+          session_id: sessionId, user_id: userId, role: 'user', content: message,
+          token_count: data.usage?.prompt_tokens || 0
         });
-
         await supabase.from('ai_chat_messages').insert({
-          session_id: sessionId,
-          user_id: userId,
-          role: 'assistant',
-          content: content,
-          token_count: data.usage?.completion_tokens || 0,
+          session_id: sessionId, user_id: userId, role: 'assistant', content: content,
+          token_count: data.usage?.completion_tokens || 0
         });
 
         const { data: sessionData } = await supabase
           .from('ai_chat_sessions')
           .select('total_messages, total_tokens_used')
-          .eq('id', sessionId)
-          .eq('user_id', userId)
-          .single();
+          .eq('id', sessionId).eq('user_id', userId).single();
 
-        const currentMessages = sessionData?.total_messages || 0;
-        const currentTokens = sessionData?.total_tokens_used || 0;
-
-        await supabase.from('ai_chat_sessions')
-          .update({
-            total_messages: currentMessages + 2,
-            total_tokens_used: currentTokens + (data.usage?.total_tokens || 0),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', sessionId)
-          .eq('user_id', userId);
-
-        console.log('Chat messages saved to database');
+        await supabase.from('ai_chat_sessions').update({
+          total_messages: (sessionData?.total_messages || 0) + 2,
+          total_tokens_used: (sessionData?.total_tokens_used || 0) + (data.usage?.total_tokens || 0),
+          updated_at: new Date().toISOString()
+        }).eq('id', sessionId).eq('user_id', userId);
       } catch (dbError) {
         console.error('Database save error (non-blocking):', dbError);
       }
@@ -178,10 +193,11 @@ serve(async (req) => {
       JSON.stringify({ success: true, response: content }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+
   } catch (error) {
     console.error('OpenAI simple chat error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as Error).message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

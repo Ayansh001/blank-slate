@@ -2,6 +2,8 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+console.log('Function loaded: ai-chat-handler');
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -9,6 +11,13 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  console.log('ai-chat-handler invoked:', req.method);
+  console.log('Env check:', {
+    SUPABASE_URL: !!Deno.env.get('SUPABASE_URL'),
+    SUPABASE_SERVICE_ROLE_KEY: !!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+    OPENAI_API_KEY: !!Deno.env.get('OPENAI_API_KEY'),
+    GEMINI_API_KEY: !!Deno.env.get('GEMINI_API_KEY'),
+  });
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -100,10 +109,10 @@ serve(async (req) => {
     const serviceName = configData.service_name.toLowerCase();
     
     if (serviceName === 'openai') {
-      apiKey = Deno.env.get('OPENAI_API_KEY');
+      apiKey = Deno.env.get('OPENAI_API_KEY') || null;
       console.log('OpenAI API key available:', !!apiKey);
     } else if (serviceName === 'gemini') {
-      apiKey = Deno.env.get('GEMINI_API_KEY');
+      apiKey = Deno.env.get('GEMINI_API_KEY') || null;
       console.log('Gemini API key available:', !!apiKey);
     }
 
@@ -282,7 +291,7 @@ serve(async (req) => {
             }
 
           } else if (serviceName === 'gemini') {
-            const modelToUse = configData.model_name || 'gemini-2.0-flash-exp';
+            const modelToUse = configData.model_name || 'gemini-pro';
             console.log('Gemini model:', modelToUse);
             
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKey}`, {
@@ -325,7 +334,7 @@ serve(async (req) => {
             
             if (geminiData.error) {
               console.error('Gemini API returned error:', geminiData.error);
-              throw new Error(`Gemini error: ${geminiData.error.message || 'Unknown error'}`);
+              throw new Error(`Gemini error: ${geminiData.error?.message || 'Unknown error'}`);
             }
             
             const content = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
@@ -370,7 +379,7 @@ serve(async (req) => {
           console.error('Stream processing error:', error);
           sendEvent({ 
             type: 'error', 
-            message: error.message || 'An error occurred while processing your request'
+            message: (error as Error).message || 'An error occurred while processing your request'
           });
           controller.close();
         }
@@ -389,7 +398,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('AI Chat Handler error:', error);
     return new Response(JSON.stringify({ 
-      error: error.message || 'Internal server error' 
+      error: (error as Error).message || 'Internal server error' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

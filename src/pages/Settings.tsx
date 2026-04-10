@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollableTabsList, ScrollableTabsTrigger, TabsContent } from '@/components/ui/scrollable-tabs';
 import { Tabs } from '@/components/ui/tabs';
+import { AIConfigurationPanel } from '@/components/ai/AIConfigurationPanel';
 import { UnifiedAIServiceSelector } from '@/features/ai/components/UnifiedAIServiceSelector';
 import { QuotePreferencesPanel } from '@/components/settings/QuotePreferencesPanel';
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
@@ -94,6 +95,7 @@ export default function Settings() {
 
         <TabsContent value="ai" className="space-y-6">
           <UnifiedAIServiceSelector />
+          <AIConfigurationPanel />
         </TabsContent>
 
         <TabsContent value="appearance" className="space-y-6">

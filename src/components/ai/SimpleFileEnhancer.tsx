@@ -18,10 +18,10 @@ import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useAIConfig } from '@/features/ai/hooks/useAIConfig';
 import { useAIHistoryPreferences } from '@/hooks/useAIHistoryPreferences';
 import { useAIEnhancementNotifications } from '@/hooks/useAIEnhancementNotifications';
-import { AIProviderFactory } from '@/features/ai/providers/AIProviderFactory';
+
 import { EnhancementDisplay } from './EnhancementDisplay';
 import { toast } from 'sonner';
-import { parseAIResponse, validateEnhancementData } from '@/utils/aiResponseParser';
+
 import { FileData } from '@/hooks/useFiles';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -147,55 +147,28 @@ export function SimpleFileEnhancer({ file, onClose }: SimpleFileEnhancerProps) {
       console.log('Starting file enhancement generation for:', enhancementType);
       console.log('Content length:', content.length);
       
-      // Use direct AI provider approach like SimpleNoteEnhancer
-      const provider = AIProviderFactory.createProvider({
-        provider: activeConfig.service_name as 'openai' | 'gemini' | 'anthropic',
-        apiKey: activeConfig.api_key,
-        model: activeConfig.model_name
+      // Use backend edge function for AI processing (no browser-direct provider calls)
+      const { data: result, error: fnError } = await supabase.functions.invoke('ai-note-enhancer', {
+        body: {
+          noteId: file.id,
+          content,
+          enhancementType
+        }
       });
 
-      const prompt = `Please analyze this file content and generate a ${enhancementType.replace('_', ' ')} enhancement.
-
-Content to analyze:
-${content}
-
-Please provide your response as valid JSON in the following format:
-${getEnhancementPrompt(enhancementType)}
-
-Ensure the response is properly formatted JSON without any markdown code blocks or additional text.`;
-
-      const result = await provider.generateResponse({ 
-        prompt,
-        systemPrompt: 'You are an expert study assistant who helps improve and enhance notes for better learning. Return only valid JSON format as specified. Keep responses concise and well-structured.',
-        maxTokens: 2000,
-        temperature: 0.7
-      });
-      
-      console.log('Enhancement result received:', result);
-      
-      if (!result || !result.content) {
-        throw new Error('No response received from AI provider');
+      if (fnError) {
+        throw new Error(fnError.message || 'AI service error');
       }
 
-      // Parse the AI response to handle JSON format
-      const parsedResponse = parseAIResponse(result.content);
-      
-      console.log('Parsed AI response:', parsedResponse);
-      
-      if (!parsedResponse.success) {
-        throw new Error(parsedResponse.error || 'Failed to parse enhancement response');
-      }
-      
-      // Validate and structure the enhancement data
-      const validatedContent = validateEnhancementData(parsedResponse.data, enhancementType);
-      
-      console.log('Validated content:', validatedContent);
-      
-      if (!validatedContent) {
-        throw new Error('Invalid enhancement data structure');
+      if (!result?.success) {
+        throw new Error(result?.error || 'Enhancement generation failed');
       }
 
-      // Save to database only if history is enabled
+      const validatedContent = result.enhancement;
+      
+      console.log('Enhancement result received from backend:', validatedContent);
+
+      // Save file enhancement to our own table if history enabled (backend saved to note_enhancements with noteId)
       if (historyEnabled) {
         savedToHistory = await saveFileEnhancementToDatabase(enhancementType, validatedContent, content);
       }

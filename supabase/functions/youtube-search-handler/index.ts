@@ -25,7 +25,7 @@ serve(async (req) => {
     }
 
     // Get YouTube API key
-    const youtubeApiKey = Deno.env.get('YOUTUBE_API_KEY');
+    const youtubeApiKey = Deno.env.get('YOUTUBE_API_KEY') || null;
     if (!youtubeApiKey) {
       console.warn('YouTube API key not configured, returning mock data');
       
@@ -128,7 +128,7 @@ serve(async (req) => {
     console.error('YouTube search error:', error);
     return new Response(JSON.stringify({ 
       success: false, 
-      error: error.message || 'Internal server error' 
+      error: (error as Error).message || 'Internal server error' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

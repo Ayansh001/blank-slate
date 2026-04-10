@@ -28,7 +28,7 @@ export function useQuizAutoSave(
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const lastSaveRef = useRef<Date | null>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   const AUTO_SAVE_INTERVAL = 30000; // 30 seconds
   const STORAGE_KEY = `quiz_autosave_${quizId}`;

@@ -148,15 +148,12 @@ export class DocumentAnalysisService {
     confidence: number;
     tokenUsage: TokenUsage;
   }> {
-    // Call AI service through Supabase Edge Function
+    // Call AI service through Supabase Edge Function - no apiKey in body
     const response = await supabase.functions.invoke('ai-document-analysis', {
       body: {
-        service: aiConfig.service_name,
-        model: aiConfig.model_name,
         analysisType,
         content,
-        customPrompt,
-        apiKey: aiConfig.api_key // Direct API key usage
+        customPrompt
       }
     });
 

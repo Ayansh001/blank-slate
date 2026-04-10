@@ -56,12 +56,27 @@ serve(async (req) => {
       });
     }
 
-    // Get API key (simplified pattern matching Gemini)
-    const apiKey = Deno.env.get('OPENAI_API_KEY');
+    // Get API key - try env secret first, then user's saved config
+    let apiKey = Deno.env.get('OPENAI_API_KEY') || null;
+    
+    if (!apiKey) {
+      const { data: configData } = await supabase
+        .from('ai_service_configs')
+        .select('api_key')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .maybeSingle();
+      
+      if (configData?.api_key) {
+        apiKey = configData.api_key;
+      }
+    }
+    
     if (!apiKey) {
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'OpenAI API key not configured' 
+        error: 'OpenAI API key not configured. Please add your API key in settings.',
+        requiresConfig: true
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -319,7 +334,7 @@ Generate the comprehensive learning package now:`;
     console.error('OpenAI concept learner error:', error);
     return new Response(JSON.stringify({ 
       success: false, 
-      error: error.message || 'Internal server error' 
+      error: (error as Error).message || 'Internal server error' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

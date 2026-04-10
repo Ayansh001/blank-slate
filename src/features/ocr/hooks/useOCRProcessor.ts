@@ -1,5 +1,6 @@
 
 import { useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { OCRProcessorFactory } from '../processors/OCRProcessorFactory';
 import { OCRDatabaseService } from '../services/OCRDatabaseService';
 import { NotificationService } from '@/services/NotificationService';
@@ -24,6 +25,7 @@ export interface ProcessOCRParams {
 
 export function useOCRProcessor(config: OCRProcessorConfig = {}) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentJob, setCurrentJob] = useState<OCRJob | null>(null);
   const [processingFiles, setProcessingFiles] = useState<Set<string>>(new Set());
@@ -100,11 +102,15 @@ export function useOCRProcessor(config: OCRProcessorConfig = {}) {
       // Save to database with actual user ID
       await OCRDatabaseService.saveOCRResults({
         fileId,
-        userId: user.id, // ✅ Use actual user ID
+        userId: user.id,
         text: result.text,
         confidence: result.confidence,
         language
       });
+
+      // Invalidate caches so UI updates immediately
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      queryClient.invalidateQueries({ queryKey: ['ocr-jobs'] });
 
       // Complete job
       const completedJob = { 

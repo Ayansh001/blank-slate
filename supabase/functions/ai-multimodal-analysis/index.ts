@@ -26,8 +26,8 @@ serve(async (req) => {
     }
 
     // Create Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || null;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || null;
     
     if (!supabaseUrl || !supabaseKey) {
       return new Response(
@@ -62,7 +62,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Multimodal analysis error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as Error).message }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

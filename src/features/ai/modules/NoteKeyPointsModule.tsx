@@ -8,9 +8,24 @@ import { useAIProvider } from '../hooks/useAIProvider';
 import { AIProviderFactory } from '../providers/AIProviderFactory';
 import { EnhancementResult } from '../types/providers';
 import { logger } from '../utils/DebugLogger';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { useAuth } from '@/features/auth/hooks/useAuth';
-import { toast as sonnerToast } from 'sonner';
+
+function showClassifiedError(error: any, fallbackTitle: string) {
+  const code = error?.code || '';
+  const msg = error?.message || 'Unknown error';
+  if (code === 'invalid_key') {
+    toast.error('Invalid API key', { description: 'Check your API key in Settings → AI Configuration' });
+  } else if (code === 'quota_exceeded') {
+    toast.error('API quota exceeded', { description: 'Check your billing or try again later' });
+  } else if (code === 'rate_limited') {
+    toast.error('Rate limited', { description: 'Please wait a moment and try again' });
+  } else if (code === 'network_error') {
+    toast.error('Network error', { description: 'Check your internet connection and try again' });
+  } else {
+    toast.error(fallbackTitle, { description: msg });
+  }
+}
 
 interface NoteKeyPointsModuleProps {
   content: string;
@@ -31,15 +46,15 @@ export const NoteKeyPointsModule: React.FC<NoteKeyPointsModuleProps> = ({
 
   const copyKeyPoint = (keyPoint: string) => {
     navigator.clipboard.writeText(keyPoint).then(() => {
-      sonnerToast.success('Key point copied to clipboard');
+      toast.success('Key point copied to clipboard');
     }).catch(() => {
-      sonnerToast.error('Failed to copy key point');
+      toast.error('Failed to copy key point');
     });
   };
 
   const saveKeyPointAsNote = async (keyPoint: string, index: number) => {
     if (!user) {
-      sonnerToast.error('Please log in to save notes');
+      toast.error('Please log in to save notes');
       return;
     }
 
@@ -54,21 +69,16 @@ export const NoteKeyPointsModule: React.FC<NoteKeyPointsModuleProps> = ({
       });
 
       if (error) throw error;
-      
-      sonnerToast.success('Key point saved as new note!');
+      toast.success('Key point saved as new note!');
     } catch (error) {
       console.error('Failed to save key point as note:', error);
-      sonnerToast.error('Failed to save as note');
+      toast.error('Failed to save as note');
     }
   };
 
   const generateKeyPoints = async () => {
     if (!content.trim()) {
-      toast({
-        title: "No content",
-        description: "Please provide content to extract key points from.",
-        variant: "destructive",
-      });
+      toast.error('No content', { description: 'Please provide content to extract key points from.' });
       return;
     }
 
@@ -84,14 +94,14 @@ export const NoteKeyPointsModule: React.FC<NoteKeyPointsModuleProps> = ({
 
       const config = await getProviderConfig();
       if (!config) {
-        throw new Error(`No configuration found for ${selectedProvider} provider`);
+        toast.error('No API key configured', { description: 'Go to Settings → AI Configuration to add your key.' });
+        return;
       }
 
       const provider = AIProviderFactory.createProvider(config);
-      const keyPoints = await provider.generateKeyPoints(content); // Now returns string[] directly
+      const keyPoints = await provider.generateKeyPoints(content);
 
-      const endTime = Date.now();
-      const duration = endTime - startTime;
+      const duration = Date.now() - startTime;
       setProcessingTime(duration);
 
       const enhancementResult: EnhancementResult<string[]> = {
@@ -105,21 +115,15 @@ export const NoteKeyPointsModule: React.FC<NoteKeyPointsModuleProps> = ({
       setResult(enhancementResult);
       onKeyPointsGenerated?.(keyPoints);
 
-      logger.info('NoteKeyPointsModule', 'Key points extracted successfully', {
-        provider: selectedProvider,
-        processingTime: duration,
-        keyPointsCount: keyPoints.length,
-      });
-
-      toast({
-        title: "Key points extracted",
+      toast.success('Key points extracted', {
         description: `Found ${keyPoints.length} key points in ${(duration / 1000).toFixed(1)}s`,
       });
-    } catch (error) {
+    } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      
+
       logger.error('NoteKeyPointsModule', 'Failed to extract key points', {
         error: errorMessage,
+        code: error?.code,
         provider: selectedProvider,
       });
 
@@ -129,11 +133,7 @@ export const NoteKeyPointsModule: React.FC<NoteKeyPointsModuleProps> = ({
         provider: selectedProvider || 'openai',
       });
 
-      toast({
-        title: "Key points extraction failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      showClassifiedError(error, 'Key points extraction failed');
     } finally {
       setIsGenerating(false);
     }
