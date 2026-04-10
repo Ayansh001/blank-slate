@@ -1,78 +1,53 @@
 
 
-## Full System Recheck Report
+## Root Cause: `gemini-pro` is hardcoded EVERYWHERE
 
-### Step 1 — DB Schema: PASS
-- Table `ai_service_configs` has columns: `api_key`, `service_name`, `model_name`, `is_active`, `user_id`
-- `api_key_encrypted` exists ONLY in migration history (renamed to `api_key`), NOT in any runtime code
-- Zero matches for `api_key_encrypted` in `supabase/functions/`
+### The Problem
 
-### Step 2 — DB → Frontend Flow: PASS
-Console logs confirm:
-```
-AI Config active: { provider: "openai", hasApiKey: true, keyPrefix: "sk-proj-...", isActive: true }
-```
-- `activeConfig` exists
-- `activeConfig.api_key` is NOT null
-- RLS is not blocking the key
+The model `gemini-pro` is a **deprecated/legacy model** that returns 404 from Gemini's `generateContent` endpoint. Meanwhile, `gemini-1.5-flash` works in `ListModels` because listing and generation use different model availability rules.
 
-### Step 3 — RLS Policies: PASS
-The diagnostic log proves `api_key` is returned to the frontend. If RLS blocked it, `hasApiKey` would be `false`.
+**Why ListModels works but generateContent fails**: `gemini-pro` may still appear in model listings but is no longer available for content generation in many regions/projects. The v1beta endpoint specifically requires newer model names like `gemini-1.5-flash`.
 
-### Step 4 — Execution Path Classification
+### Evidence
 
-| Feature | Path | File |
-|---------|------|------|
-| Concept Learner | CLIENT (AIProviderFactory) when config exists, BACKEND fallback to edge fn | `useConceptLearner.ts` |
-| Chat | BACKEND (edge function: `openai-simple-chat` / `ai-gemini-chat`) | `useEnhancedChat.ts` |
-| Quiz | CLIENT (AIProviderFactory) | `SimpleQuizGenerator.tsx` |
-| Note Enhancer | CLIENT (AIProviderFactory) | `SimpleNoteEnhancer.tsx` |
-| File Enhancer | CLIENT (AIProviderFactory) | `SimpleFileEnhancer.tsx` |
+1. **Database**: `ai_service_configs` has `model_name = 'gemini-pro'` for the Gemini config
+2. **Zero matches** for `gemini-1.5-flash` anywhere in the codebase
+3. **141 matches** for `gemini-pro` across 22 files — all hardcoded
 
-### Step 5 — API Key Usage Per Path: PASS (with one issue)
+### Files That Force `gemini-pro` (Must ALL Change)
 
-**CLIENT PATH**: All client-side features read `activeConfig.api_key` and pass it to `AIProviderFactory.createProvider()`. This is correct and verified working.
+**Client-side providers:**
+- `src/features/ai/providers/GeminiProvider.ts` (lines 10-12) — forces `gemini-pro` even if config says otherwise
+- `src/features/ai/providers/AIProviderFactory.ts` (lines 8-9, 31) — overrides config to `gemini-pro`
+- `src/features/ai/hooks/useEnhancedChat.ts` (line 13) — `GEMINI_MODEL = 'gemini-pro'`
 
-**BACKEND PATH (Chat)**: `useEnhancedChat.ts` line 191/205/219 passes `configData.api_key` to edge functions. Edge functions (`openai-simple-chat`, `ai-gemini-chat`) accept `apiKey` from request body. This is correct.
+**UI components (defaults/display):**
+- `src/features/ai/components/SimpleServiceSelector.tsx` (line 41)
+- `src/features/ai/components/UnifiedAIServiceSelector.tsx` (line 77)
+- `src/features/ai/components/AIConfigValidator.tsx` (lines 31, 81, 112, 181)
 
-**REMAINING ISSUE**: `useEnhancedChat.ts` line 176 still uses `.single()` instead of `.maybeSingle()`. If user has zero active configs, this throws a PostgREST error instead of returning null gracefully. The error message would be a cryptic database error rather than "AI service not configured."
+**Edge functions (fallback defaults):**
+- `supabase/functions/concept-learner-handler/index.ts` (line 207)
+- `supabase/functions/ai-chat-handler/index.ts` (line 294)
+- `supabase/functions/ai-chat-sse/index.ts` (line 287)
+- `supabase/functions/ai-quiz-generator/index.ts` (lines 225, 227)
+- `supabase/functions/ai-note-enhancer/index.ts` (lines 220, 222)
+- `supabase/functions/ai-smart-organizer/index.ts` (line 127)
+- `supabase/functions/ai-quote-generator/index.ts` (line 249)
+- `supabase/functions/concept-summary-handler/index.ts` (line 39)
+- `supabase/functions/enhanced-concept-learner/index.ts` (line 118)
 
-### Step 6 — Edge Function Column References: PASS
-All 6 previously-broken edge functions now correctly use `api_key` (not `api_key_encrypted`). Verified via search.
+### Fix Plan
 
-### Step 7 — No Mixed Architecture Issues: PASS
-Each feature uses exactly one path. Concept learner has a clean fallback: client-side first, edge function only if no local config.
+**Step 1**: Replace ALL `gemini-pro` references with `gemini-1.5-flash` across all 22 files listed above.
 
-### Step 8 — Remaining Issues Found
+**Step 2**: Remove the forced override logic in `GeminiProvider.ts` (lines 11-12 that force model back to `gemini-pro`) and `AIProviderFactory.ts` (lines 8-9 that normalize config to `gemini-pro`). Let the configured model pass through.
 
-**Issue 1: `useEnhancedChat.ts` line 176 — `.single()` not yet fixed**
-- **File**: `src/features/ai/hooks/useEnhancedChat.ts`, line 176
-- **Code**: `.single()` should be `.maybeSingle()`
-- **Impact**: If no active config exists, chat crashes with PostgREST error instead of showing "please configure" message
-- **Severity**: Medium — only affects users with no active config
+**Step 3**: Update the database row — set `model_name = 'gemini-1.5-flash'` for the existing Gemini config.
 
-**Issue 2: Chat sends API key in request body over the network**
-- **File**: `src/features/ai/hooks/useEnhancedChat.ts`, lines 191, 205, 219
-- **Code**: `apiKey: configData.api_key` sent in POST body to edge function
-- **Impact**: Security concern — API key travels from browser → Supabase edge function. The edge function already has access to the DB via service role key, so it could read the key itself.
-- **Severity**: Low (edge functions are HTTPS, but it's an unnecessary exposure)
+**Step 4**: Update `useEnhancedChat.ts` constant and normalizer to use `gemini-1.5-flash`.
 
-### Step 9 — Conclusion
+### Technical Summary
 
-The system is architecturally correct now. The previous fixes (removing `api_key_encrypted`, fixing `.single()` in `useAIProvider.ts`, unifying config) are all in place and verified working.
-
-**One remaining fix needed:**
-
-1. `src/features/ai/hooks/useEnhancedChat.ts` line 176: Change `.single()` → `.maybeSingle()` to prevent chat crashes when no config exists
-
-### Implementation
-
-Single file change — replace `.single()` with `.maybeSingle()` on line 176 of `src/features/ai/hooks/useEnhancedChat.ts`.
-
-Everything else is verified working:
-- DB schema correct
-- Frontend reads `api_key` successfully (proven by console log)
-- Edge functions use correct column name
-- Client-side providers receive valid API key
-- No mixed architecture conflicts
+Every single code path — client-side provider, edge functions, UI defaults, and the database itself — uses the deprecated `gemini-pro` model. The fix is a global find-and-replace of the default model name plus removing the forced override logic that prevents users from using any other model.
 
