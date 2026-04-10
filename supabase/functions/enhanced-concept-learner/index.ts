@@ -115,7 +115,7 @@ Return a JSON object with these exact fields:
     } else {
       // Default to Gemini
       apiKey = Deno.env.get('GEMINI_API_KEY')!;
-      apiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+      apiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
       
       const promptText = `Create a comprehensive learning package for the concept: "${concept}"
 

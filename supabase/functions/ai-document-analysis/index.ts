@@ -140,7 +140,7 @@ serve(async (req) => {
         analysisResult = { content: { summary: rawContent }, confidence: 0.7, tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } };
       }
     } else if (serviceName === 'gemini') {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${configData.model_name || 'gemini-pro'}:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${configData.model_name || 'gemini-1.5-flash'}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

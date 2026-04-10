@@ -124,7 +124,7 @@ async function createOrganizationSuggestions(items: any[], organizationType: str
     const data = await response.json();
     return JSON.parse(data.choices[0].message.content);
   } else if (serviceName === 'gemini') {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${configData.model_name || 'gemini-pro'}:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${configData.model_name || 'gemini-1.5-flash'}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

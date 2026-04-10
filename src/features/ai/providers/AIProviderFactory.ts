@@ -5,9 +5,7 @@ import { AnthropicProvider } from './AnthropicProvider';
 
 export class AIProviderFactory {
   static createProvider(config: AIProviderConfig): AIProviderInterface {
-    const normalizedConfig = config.provider === 'gemini'
-      ? { ...config, model: 'gemini-pro' }
-      : config;
+    const normalizedConfig = config;
 
     switch (normalizedConfig.provider) {
       case 'openai':
@@ -28,7 +26,7 @@ export class AIProviderFactory {
   static getDefaultModels(): Record<AIProvider, string> {
     return {
       openai: 'gpt-4o-mini',
-      gemini: 'gemini-pro',
+      gemini: 'gemini-1.5-flash',
       anthropic: 'claude-3-haiku-20240307',
     };
   }

@@ -2,7 +2,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { AIServiceConfig, AIServiceProvider, AIServiceCapabilities } from '../types';
 
-const GEMINI_MODEL = 'gemini-pro';
+const GEMINI_MODEL = 'gemini-1.5-flash';
 
 const normalizeConfigModel = <T extends Partial<AIServiceConfig>>(config: T): T => {
   if ((config.service_name || '').toLowerCase() !== 'gemini') {
@@ -33,7 +33,7 @@ export class AIServiceManager {
       costPerToken: { input: 0.000003, output: 0.000015 }
     },
     gemini: {
-      models: ['gemini-pro'],
+      models: ['gemini-1.5-flash'],
       maxTokens: 1000000,
       supportsVision: true,
       supportsStreaming: true,
