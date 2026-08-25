@@ -1,0 +1,1 @@
+UPDATE ai_service_configs SET model_name = 'gemini-1.5-flash' WHERE model_name LIKE 'gemini-2%';

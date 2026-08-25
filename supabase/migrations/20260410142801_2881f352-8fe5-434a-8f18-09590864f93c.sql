@@ -1,0 +1,1 @@
+UPDATE public.ai_service_configs SET model_name = 'gemini-1.5-flash' WHERE service_name ILIKE '%gemini%' AND (model_name = 'gemini-pro' OR model_name LIKE 'gemini-2.0%');
