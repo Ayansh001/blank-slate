@@ -64,7 +64,7 @@ export function useStreamingChatSSE({ sessionId, fileContext }: StreamingChatSSE
       }
 
       // Make SSE request
-      const response = await fetch(`https://slizsctvvubqnqgsucsj.supabase.co/functions/v1/ai-chat-sse`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat-sse`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,

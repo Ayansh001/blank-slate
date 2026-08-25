@@ -2,7 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 // Centralized chat utility functions
 export const getChatEndpoint = () => {
-  const projectRef = 'slizsctvvubqnqgsucsj';
+  const projectRef = import.meta.env.VITE_SUPABASE_PROJECT_ID;
   return `https://${projectRef}.supabase.co/functions/v1/ai-chat-sse`;
 };
 
