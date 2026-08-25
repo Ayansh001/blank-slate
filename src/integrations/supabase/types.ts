@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "12.2.3 (519615d)"
+    PostgrestVersion: "14.15"
   }
   public: {
     Tables: {
@@ -45,7 +45,7 @@ export type Database = {
           id?: string
           model_used: string
           note_id?: string | null
-          questions?: Json
+          questions: Json
           score?: number | null
           time_spent_minutes?: number | null
           updated_at?: string | null
@@ -184,7 +184,7 @@ export type Database = {
         }
         Insert: {
           ai_service: string
-          category: string
+          category?: string
           created_at?: string
           generated_date?: string
           id?: string
@@ -540,13 +540,6 @@ export type Database = {
             referencedRelation: "folders"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "files_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
         ]
       }
       folders: {
@@ -756,13 +749,6 @@ export type Database = {
             columns: ["file_id"]
             isOneToOne: false
             referencedRelation: "files"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notes_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -980,7 +966,15 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ocr_orchestration_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "files"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -1235,15 +1229,7 @@ export type Database = {
           user_id?: string
           words_written?: number | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "study_sessions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Views: {
@@ -1321,19 +1307,17 @@ export type Database = {
         }
         Returns: Json
       }
-      update_ocr_status:
-        | { Args: never; Returns: undefined }
-        | {
-            Args: {
-              _file_id: string
-              _ocr_confidence?: number
-              _ocr_language?: string
-              _ocr_status?: string
-              _ocr_text?: string
-              _user_id: string
-            }
-            Returns: boolean
-          }
+      update_ocr_status: {
+        Args: {
+          _file_id: string
+          _ocr_confidence?: number
+          _ocr_language?: string
+          _ocr_status?: string
+          _ocr_text?: string
+          _user_id: string
+        }
+        Returns: boolean
+      }
       update_ocr_status_comprehensive: {
         Args: {
           _file_id: string
