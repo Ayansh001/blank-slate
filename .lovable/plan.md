@@ -1,53 +1,45 @@
+# StudyVault backend reconstruction on the new Supabase project
 
+## Important finding first
 
-## Root Cause: `gemini-pro` is hardcoded EVERYWHERE
+The working project is currently a **blank Lovable starter**, not the StudyVault app. `src/` contains only `App.tsx`, `Index.tsx` (placeholder), `NotFound.tsx` and shadcn UI, and `supabase/` contains only `config.toml` — no Edge Functions, no migrations.
 
-### The Problem
+The full StudyVault app is still in git history at commit `9d99b37` (388 files under `src/`, 23 Edge Functions, 27 migration files, and the old generated `types.ts` describing 26 tables and ~20 RPC functions). A later commit reset the tree to the blank template and left duplicated leftovers (`package 2.json`, `index 2.html`, `tailwind.config 2.ts`, ...).
 
-The model `gemini-pro` is a **deprecated/legacy model** that returns 404 from Gemini's `generateContent` endpoint. Meanwhile, `gemini-1.5-flash` works in `ListModels` because listing and generation use different model availability rules.
+So the migration has two halves: restore the application from git history, then rebuild the backend it expects in the new Supabase project (`cyiphnsfdvajmptsezax`, currently empty — 0 tables, 0 buckets, 0 functions).
 
-**Why ListModels works but generateContent fails**: `gemini-pro` may still appear in model listings but is no longer available for content generation in many regions/projects. The v1beta endpoint specifically requires newer model names like `gemini-1.5-flash`.
+## What the audit found (source of truth = code at `9d99b37`)
 
-### Evidence
+Tables referenced by the app (from the old generated types + query audit):
+advanced_quiz_sessions, ai_chat_messages, ai_chat_sessions, ai_daily_quotes, ai_history_preferences, ai_service_configs, ai_usage_tracking, concept_learning_sessions, content_relationships, daily_quote_preferences, document_analyses, files, folders, learning_analytics, note_enhancements, notes, notifications, ocr_chunks, ocr_jobs, ocr_orchestration, profiles, quiz_sessions, storage_analytics, study_goals, study_plans, study_sessions.
 
-1. **Database**: `ai_service_configs` has `model_name = 'gemini-pro'` for the Gemini config
-2. **Zero matches** for `gemini-1.5-flash` anywhere in the codebase
-3. **141 matches** for `gemini-pro` across 22 files — all hardcoded
+Database functions/RPC the app calls include: `ensure_user_profile`, `handle_new_user`, `track_learning_activity`, `insert_daily_quote`, `calculate_database_storage_usage`, `update_updated_at_column`, the OCR family (`create_ocr_chunk_job`, `initialize_chunked_ocr`, `update_chunk_progress`, `update_ocr_status_*`, `cleanup_*_ocr_jobs*`), plus `encrypt_api_key`.
 
-### Files That Force `gemini-pro` (Must ALL Change)
+Triggers: `on_auth_user_created` on new signup, per-table `updated_at` triggers, chat message-count trigger, OCR/files triggers.
 
-**Client-side providers:**
-- `src/features/ai/providers/GeminiProvider.ts` (lines 10-12) — forces `gemini-pro` even if config says otherwise
-- `src/features/ai/providers/AIProviderFactory.ts` (lines 8-9, 31) — overrides config to `gemini-pro`
-- `src/features/ai/hooks/useEnhancedChat.ts` (line 13) — `GEMINI_MODEL = 'gemini-pro'`
+Storage: one bucket `user-files` with per-user folder policies (`auth.uid()` = first path segment).
 
-**UI components (defaults/display):**
-- `src/features/ai/components/SimpleServiceSelector.tsx` (line 41)
-- `src/features/ai/components/UnifiedAIServiceSelector.tsx` (line 77)
-- `src/features/ai/components/AIConfigValidator.tsx` (lines 31, 81, 112, 181)
+Edge Functions (23): ai-chat-handler, ai-chat-sse, ai-content-analyzer, ai-document-analysis, ai-gemini-chat, ai-multimodal-analysis, ai-note-enhancer, ai-quiz-generator, ai-quote-generator, ai-smart-organizer, ai-visual-quiz-generator, concept-learner-handler, concept-summary-handler, enhanced-concept-learner, gemini-concept-learner-v2, openai-chat-handler, openai-concept-learner-v2, openai-enhanced-concept-learner, openai-simple-chat, simple-note-enhancer, simple-quiz-generator, universal-ai-handler, youtube-search-handler.
 
-**Edge functions (fallback defaults):**
-- `supabase/functions/concept-learner-handler/index.ts` (line 207)
-- `supabase/functions/ai-chat-handler/index.ts` (line 294)
-- `supabase/functions/ai-chat-sse/index.ts` (line 287)
-- `supabase/functions/ai-quiz-generator/index.ts` (lines 225, 227)
-- `supabase/functions/ai-note-enhancer/index.ts` (lines 220, 222)
-- `supabase/functions/ai-smart-organizer/index.ts` (line 127)
-- `supabase/functions/ai-quote-generator/index.ts` (line 249)
-- `supabase/functions/concept-summary-handler/index.ts` (line 39)
-- `supabase/functions/enhanced-concept-learner/index.ts` (line 118)
+Secrets they read: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (auto-provided) and optional `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`.
 
-### Fix Plan
+No enum types, no materialized views, no cron jobs and no realtime publication entries were found in the old SQL; realtime usage will be re-verified from the restored frontend code before enabling anything.
 
-**Step 1**: Replace ALL `gemini-pro` references with `gemini-1.5-flash` across all 22 files listed above.
+## Plan
 
-**Step 2**: Remove the forced override logic in `GeminiProvider.ts` (lines 11-12 that force model back to `gemini-pro`) and `AIProviderFactory.ts` (lines 8-9 that normalize config to `gemini-pro`). Let the configured model pass through.
+1. **Restore the application** from commit `9d99b37`: all of `src/`, `public/`, `supabase/functions/`, `supabase/migrations/`, and the app's root configs (package.json, index.html, tailwind/vite/tsconfig). Remove the stray `* 2.*` duplicate files. No UI/UX redesign — a byte-level restore. Then install dependencies and confirm the dev build runs.
+2. **Rebuild the schema** in the new project with dependency-ordered migrations: extensions → tables (26) with PKs, FKs to `auth.users`, NOT NULLs, defaults, checks, unique constraints → indexes → GRANTs for `authenticated`/`service_role` (and `anon` only where the app truly needs public reads). Columns and types are taken from the old generated `types.ts` plus the historical SQL, so names match the frontend exactly.
+3. **Recreate functions and triggers**: all functions above with correct signatures, `SECURITY DEFINER` + pinned `search_path` where required, then `on_auth_user_created`, `updated_at` triggers, chat-count and OCR triggers.
+4. **Recreate RLS**: enable RLS on every table and add owner-scoped policies (`auth.uid() = user_id`) for select/insert/update/delete, with service-role access for Edge Functions; `ai_daily_quotes` / reference-style tables get read-only access per the old policies. No table left unprotected, nothing left permissive.
+5. **Storage**: create the private `user-files` bucket and re-add the per-user path policies for read/insert/update/delete.
+6. **Realtime**: re-scan the restored code for `.channel(...)`/`postgres_changes` and add only the tables actually subscribed to the realtime publication.
+7. **Deploy all 23 Edge Functions** to the new project and verify each responds (auth-required functions checked for a proper 401 rather than a crash).
+8. **Compatibility + validation pass**: regenerate types, grep for any old project ref (`slizsctvvubqnqgsucsj`) and remove it, then check every `from('table')`, `rpc('fn')`, bucket name and `functions.invoke('name')` in the code against what now exists; run the build, typecheck and existing tests; run the Supabase security linter and fix migration-related findings.
+9. **Report**: tables/functions/triggers/policies/indexes/buckets created, per-function deploy status, secrets you still need to add, and anything not recoverable.
 
-**Step 3**: Update the database row — set `model_name = 'gemini-1.5-flash'` for the existing Gemini config.
+## Notes and limits
 
-**Step 4**: Update `useEnhancedChat.ts` constant and normalizer to use `gemini-1.5-flash`.
-
-### Technical Summary
-
-Every single code path — client-side provider, edge functions, UI defaults, and the database itself — uses the deprecated `gemini-pro` model. The fix is a global find-and-replace of the default model name plus removing the forced override logic that prevents users from using any other model.
-
+- Only structure and logic are recreated. The old database's rows (users, notes, files, chat history, saved API keys) are not recoverable from the codebase, and no data will be invented. Existing users must sign up again on the new project; uploaded files in the old bucket are gone.
+- Any column that existed only in the old live database and was never referenced by code or SQL cannot be known; if a runtime error later reveals one, it gets added as a follow-up migration.
+- AI provider keys: the app stores per-user keys in `ai_service_configs`, so users re-enter them in Settings. Optional server fallbacks (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `YOUTUBE_API_KEY`, `ANTHROPIC_API_KEY`) will be requested as secrets if you want the fallback path active.
+- `.env` already points at the new project, so no frontend credential edits are expected beyond the restore.
