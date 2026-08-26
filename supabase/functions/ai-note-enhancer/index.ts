@@ -422,3 +422,4 @@ function createEnhancementPrompt(content: string, enhancementType: string): stri
       return basePrompt + `Create a JSON object with enhanced content appropriate for the enhancement type: ${enhancementType}`;
   }
 }
+// redeploy

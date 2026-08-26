@@ -395,3 +395,5 @@ function createQuizPrompt(content: string, quizType: string, questionCount: numb
       return basePrompt + `Create a JSON object with questions array appropriate for the quiz type.`;
   }
 }
+
+// redeploy
