@@ -203,3 +203,5 @@ function getAnalysisPrompt(analysisType: string, content: string): string {
 
   return `${prompts[analysisType] || prompts.summary}\n\nDocument content:\n${content}\n\nRespond with valid JSON.`;
 }
+
+// redeploy
