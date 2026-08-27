@@ -11,6 +11,7 @@ import { useAIProvider } from '../hooks/useAIProvider';
 import { useAIConfig } from '../hooks/useAIConfig';
 import { AIServiceProvider } from '../types';
 import { AIProviderLogo } from '@/components/ui/AIProviderLogo';
+import { GROQ_DEFAULT_MODEL } from '../providers/GroqProvider';
 import { toast } from 'sonner';
 
 export function UnifiedAIServiceSelector() {
@@ -72,10 +73,11 @@ export function UnifiedAIServiceSelector() {
         return;
       }
 
-      const defaultModels = {
+      const defaultModels: Record<AIServiceProvider, string> = {
         openai: 'gpt-4o-mini',
         gemini: 'gemini-2.5-flash',
-        anthropic: 'claude-3-haiku-20240307'
+        anthropic: 'claude-3-haiku-20240307',
+        groq: GROQ_DEFAULT_MODEL
       };
       
       await saveConfig({
@@ -192,6 +194,12 @@ export function UnifiedAIServiceSelector() {
                   <span>Anthropic (Claude Haiku) - Thoughtful & Precise</span>
                 </div>
               </SelectItem>
+              <SelectItem value="groq">
+                <div className="flex items-center gap-2">
+                  <AIProviderLogo provider="groq" size="sm" />
+                  <span>Groq (Llama 3.3 70B) - Ultra Fast</span>
+                </div>
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -208,6 +216,7 @@ export function UnifiedAIServiceSelector() {
               placeholder={
                 selectedProvider === 'openai' ? 'sk-...' : 
                 selectedProvider === 'anthropic' ? 'sk-ant-...' : 
+                selectedProvider === 'groq' ? 'gsk_...' : 
                 'AIzaSy...'
               }
               value={apiKey}
@@ -217,6 +226,7 @@ export function UnifiedAIServiceSelector() {
               {selectedProvider === 'openai' && 'Get your key from platform.openai.com'}
               {selectedProvider === 'gemini' && 'Get your key from Google AI Studio'}
               {selectedProvider === 'anthropic' && 'Get your key from console.anthropic.com'}
+              {selectedProvider === 'groq' && 'Get your key from console.groq.com/keys'}
             </p>
           </div>
         )}

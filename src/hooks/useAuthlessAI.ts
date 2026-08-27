@@ -21,7 +21,8 @@ export const useAuthlessAI = (): UseAuthlessAIResult => {
   const [apiKeys, setApiKeys] = useState<Record<AIProvider, string>>({
     openai: '',
     gemini: '',
-    anthropic: ''
+    anthropic: '',
+    groq: ''
   });
 
   const availableProviders = AIProviderFactory.getSupportedProviders();

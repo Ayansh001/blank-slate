@@ -23,7 +23,8 @@ export function AIConfigurationPanel() {
   const availableServices: { id: AIServiceProvider; name: string; description: string }[] = [
     { id: 'openai', name: 'OpenAI', description: 'GPT-4 and GPT-3.5 models' },
     { id: 'anthropic', name: 'Anthropic', description: 'Claude models' },
-    { id: 'gemini', name: 'Google Gemini', description: 'Gemini models' }
+    { id: 'gemini', name: 'Google Gemini', description: 'Gemini models' },
+    { id: 'groq', name: 'Groq', description: 'Llama & GPT-OSS models on Groq' }
   ];
 
   const handleSaveConfig = async () => {
@@ -141,6 +142,7 @@ export function AIConfigurationPanel() {
                 placeholder={
                   selectedService === 'openai' ? 'sk-...' : 
                   selectedService === 'anthropic' ? 'sk-ant-...' : 
+                  selectedService === 'groq' ? 'gsk_...' : 
                   'AIzaSy...'
                 }
                 value={apiKey}

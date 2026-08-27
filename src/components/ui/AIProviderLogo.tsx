@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Gemini, OpenAI } from '@lobehub/icons';
+import { Gemini, OpenAI, Groq } from '@lobehub/icons';
 import { AIServiceProvider } from '@/features/ai/types';
 
 interface AIProviderLogoProps {
@@ -85,6 +85,34 @@ export function AIProviderLogo({ provider, size = 'md', className = '' }: AIProv
           aria-label="Google Gemini"
         >
           ✨
+        </span>
+      );
+    }
+  }
+
+  // Groq Logo - Using @lobehub/icons
+  if (provider === 'groq') {
+    try {
+      return (
+        <div
+          className={`inline-flex items-center justify-center ${className}`}
+          style={{ width: actualSize, height: actualSize }}
+          role="img"
+          aria-label="Groq"
+        >
+          <Groq size={actualSize} />
+        </div>
+      );
+    } catch (error) {
+      console.error('Error rendering Groq logo:', error);
+      return (
+        <span
+          className={`inline-block text-center ${className}`}
+          style={{ width: actualSize, height: actualSize, fontSize: actualSize * 0.8 }}
+          role="img"
+          aria-label="Groq"
+        >
+          ⚡
         </span>
       );
     }

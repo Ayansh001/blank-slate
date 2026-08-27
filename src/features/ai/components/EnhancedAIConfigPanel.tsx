@@ -75,6 +75,7 @@ export function EnhancedAIConfigPanel() {
       case 'openai': return 'ChatGPT';
       case 'gemini': return 'Gemini';
       case 'anthropic': return 'Claude';
+      case 'groq': return 'Groq';
       default: return serviceName;
     }
   };
@@ -203,6 +204,12 @@ export function EnhancedAIConfigPanel() {
                       <div className="flex items-center gap-2">
                         <span>🧠</span>
                         <span>Claude (Anthropic)</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="groq">
+                      <div className="flex items-center gap-2">
+                        <span>⚡</span>
+                        <span>Groq (Llama 3.3 70B)</span>
                       </div>
                     </SelectItem>
                   </SelectContent>
