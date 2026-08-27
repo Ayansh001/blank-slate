@@ -74,7 +74,7 @@ export function UnifiedAIServiceSelector() {
 
       const defaultModels = {
         openai: 'gpt-4o-mini',
-        gemini: 'gemini-1.5-flash',
+        gemini: 'gemini-2.5-flash',
         anthropic: 'claude-3-haiku-20240307'
       };
       

@@ -209,7 +209,7 @@ Provide a JSON response with:
       });
 
     } else if (serviceName === 'gemini') {
-      const modelToUse = configData.model_name || 'gemini-1.5-flash';
+      const modelToUse = configData.model_name || 'gemini-2.5-flash';
       console.log('[concept-learner] Calling Gemini:', { model: modelToUse });
       
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKey}`, {
@@ -226,6 +226,7 @@ Provide a JSON response with:
           generationConfig: {
             temperature: 0.7,
             maxOutputTokens: isAdvanced ? 4000 : 2000,
+            thinkingConfig: { thinkingBudget: 0 },
           }
         }),
       });

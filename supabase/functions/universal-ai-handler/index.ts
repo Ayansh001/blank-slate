@@ -166,12 +166,12 @@ async function callOpenAI(prompt: string, config: any, options: any) {
 }
 
 async function callGemini(prompt: string, config: any, options: any) {
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model_name || 'gemini-1.5-flash'}:generateContent?key=${config.api_key}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model_name || 'gemini-2.5-flash'}:generateContent?key=${config.api_key}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 2000 },
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2000, thinkingConfig: { thinkingBudget: 0 } },
     }),
   })
 

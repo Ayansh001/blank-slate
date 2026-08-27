@@ -97,7 +97,7 @@ export interface AIChatResponse {
   error?: string;
 }
 
-export type AIServiceProvider = 'openai' | 'anthropic' | 'gemini';
+export type AIServiceProvider = 'openai' | 'anthropic' | 'gemini' | 'groq';
 
 export interface AIServiceCapabilities {
   models: string[];

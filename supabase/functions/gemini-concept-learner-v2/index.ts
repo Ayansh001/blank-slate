@@ -195,7 +195,7 @@ Guidelines:
 
 Generate the comprehensive learning package now:`;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -209,6 +209,7 @@ Generate the comprehensive learning package now:`;
         generationConfig: {
           temperature: 0.7,
           maxOutputTokens: 6000,
+          thinkingConfig: { thinkingBudget: 0 },
         }
       }),
     });

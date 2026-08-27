@@ -115,7 +115,7 @@ Return a JSON object with these exact fields:
     } else {
       // Default to Gemini
       apiKey = Deno.env.get('GEMINI_API_KEY')!;
-      apiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      apiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
       
       const promptText = `Create a comprehensive learning package for the concept: "${concept}"
 
@@ -164,6 +164,7 @@ Generate additional flashcard summaries for each key point and example with both
         generationConfig: {
           temperature: 0.7,
           maxOutputTokens: 4000,
+          thinkingConfig: { thinkingBudget: 0 },
         }
       };
     }

@@ -36,7 +36,7 @@ Format your response as JSON:
   "summary": "Your 2-3 sentence summary here"
 }`;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -52,6 +52,7 @@ Format your response as JSON:
           topK: 40,
           topP: 0.95,
           maxOutputTokens: 200,
+          thinkingConfig: { thinkingBudget: 0 },
         }
       })
     });

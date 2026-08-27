@@ -7,7 +7,7 @@ export class GeminiProvider extends BaseAIProvider {
     this.validateApiKey();
     this.validateRequest(options);
 
-    const model = this.config.model || 'gemini-1.5-flash';
+    const model = this.config.model || 'gemini-2.5-flash';
     console.log('Using Gemini model:', model);
 
     console.log('[AI DEBUG]', {
@@ -44,6 +44,7 @@ export class GeminiProvider extends BaseAIProvider {
                   generationConfig: {
                     temperature: options.temperature || 0.7,
                     maxOutputTokens: options.maxTokens || 2000,
+                    thinkingConfig: { thinkingBudget: 0 },
                   },
                 }),
                 signal,

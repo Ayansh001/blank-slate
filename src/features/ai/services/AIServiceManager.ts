@@ -2,7 +2,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { AIServiceConfig, AIServiceProvider, AIServiceCapabilities } from '../types';
 
-const GEMINI_MODEL = 'gemini-1.5-flash';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 const normalizeConfigModel = <T extends Partial<AIServiceConfig>>(config: T): T => {
   if ((config.service_name || '').toLowerCase() !== 'gemini') {
@@ -32,8 +32,21 @@ export class AIServiceManager {
       supportsStreaming: true,
       costPerToken: { input: 0.000003, output: 0.000015 }
     },
+    groq: {
+      models: [
+        'llama-3.3-70b-versatile',
+        'llama-3.1-8b-instant',
+        'openai/gpt-oss-120b',
+        'openai/gpt-oss-20b',
+        'meta-llama/llama-4-scout-17b-16e-instruct'
+      ],
+      maxTokens: 131072,
+      supportsVision: false,
+      supportsStreaming: true,
+      costPerToken: { input: 0.00000059, output: 0.00000079 }
+    },
     gemini: {
-      models: ['gemini-1.5-flash'],
+      models: ['gemini-2.5-flash'],
       maxTokens: 1000000,
       supportsVision: true,
       supportsStreaming: true,
@@ -132,6 +145,8 @@ export class AIServiceManager {
         return apiKey.startsWith('sk-ant-') && apiKey.length > 20;
       case 'gemini':
         return apiKey.startsWith('AIzaSy') && apiKey.length > 30;
+      case 'groq':
+        return apiKey.startsWith('gsk_') && apiKey.length > 20;
       default:
         return false;
     }
@@ -152,6 +167,12 @@ export class AIServiceManager {
           const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
           return geminiResponse.ok;
           
+        case 'groq':
+          const groqResponse = await fetch('https://api.groq.com/openai/v1/models', {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+          });
+          return groqResponse.ok;
+
         case 'anthropic':
           // Anthropic doesn't have a simple test endpoint, so we'll just validate format
           return true;

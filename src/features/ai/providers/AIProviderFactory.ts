@@ -2,6 +2,7 @@ import { AIProvider, AIProviderConfig, AIProviderInterface } from '../types/prov
 import { OpenAIProvider } from './OpenAIProvider';
 import { GeminiProvider } from './GeminiProvider';
 import { AnthropicProvider } from './AnthropicProvider';
+import { GroqProvider, GROQ_DEFAULT_MODEL } from './GroqProvider';
 
 export class AIProviderFactory {
   static createProvider(config: AIProviderConfig): AIProviderInterface {
@@ -14,20 +15,23 @@ export class AIProviderFactory {
         return new GeminiProvider(normalizedConfig);
       case 'anthropic':
         return new AnthropicProvider(normalizedConfig);
+      case 'groq':
+        return new GroqProvider(normalizedConfig);
       default:
         throw new Error(`Unsupported AI provider: ${normalizedConfig.provider}`);
     }
   }
 
   static getSupportedProviders(): AIProvider[] {
-    return ['openai', 'gemini', 'anthropic'];
+    return ['openai', 'gemini', 'anthropic', 'groq'];
   }
 
   static getDefaultModels(): Record<AIProvider, string> {
     return {
       openai: 'gpt-4o-mini',
-      gemini: 'gemini-1.5-flash',
+      gemini: 'gemini-2.5-flash',
       anthropic: 'claude-3-haiku-20240307',
+      groq: GROQ_DEFAULT_MODEL,
     };
   }
 

@@ -35,6 +35,12 @@ export class AIProviderValidator {
       }
     }
 
+    if (config.provider === 'groq' && config.apiKey) {
+      if (!config.apiKey.startsWith('gsk_')) {
+        warnings.push('Groq API key should start with "gsk_"');
+      }
+    }
+
     if (config.provider === 'gemini' && config.apiKey) {
       if (config.apiKey.length < 30) {
         warnings.push('Gemini API key seems too short');

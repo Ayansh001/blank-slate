@@ -224,6 +224,13 @@ export abstract class BaseAIProvider implements AIProviderInterface {
       );
     }
 
+    if (this.config.provider === 'groq' && !this.config.apiKey.startsWith('gsk_')) {
+      throw this.createClassifiedError(
+        'Invalid Groq API key format (expected gsk_...)',
+        'invalid_key'
+      );
+    }
+
     if (this.config.provider === 'gemini' && this.config.apiKey.length < 20) {
       throw this.createClassifiedError(
         'Invalid Gemini API key format',

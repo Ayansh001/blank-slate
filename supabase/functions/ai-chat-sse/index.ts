@@ -284,7 +284,7 @@ serve(async (req) => {
               }
             }
           } else if (serviceName === 'gemini') {
-            const modelToUse = configData.model_name || 'gemini-1.5-flash';
+            const modelToUse = configData.model_name || 'gemini-2.5-flash';
             console.log('Making Gemini request with model:', modelToUse);
             
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKey}`, {
@@ -301,6 +301,7 @@ serve(async (req) => {
                 generationConfig: {
                   temperature: 0.7,
                   maxOutputTokens: 4000,
+                  thinkingConfig: { thinkingBudget: 0 },
                 }
               }),
             });

@@ -1,5 +1,5 @@
 
-export type AIServiceProvider = 'openai' | 'anthropic' | 'gemini';
+export type AIServiceProvider = 'openai' | 'anthropic' | 'gemini' | 'groq';
 export type AIProvider = AIServiceProvider; // Alias for backward compatibility
 
 export interface AIServiceConfig {

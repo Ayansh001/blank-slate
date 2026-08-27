@@ -14,7 +14,7 @@ interface UseAIProviderResult {
   getProviderConfig: () => Promise<AIProviderConfig | null>;
 }
 
-const GEMINI_MODEL = 'gemini-1.5-flash';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 const normalizeProviderModel = (provider: AIProvider, model?: string | null) => {
   if (provider === 'gemini') {

@@ -6,6 +6,36 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Models may wrap JSON in a markdown code fence or add surrounding prose.
+// Strip that before parsing so valid JSON payloads are not rejected.
+function parseAIJson(raw: string): any {
+  const text = (raw || '').trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    // continue with cleanup attempts
+  }
+
+  const withoutFence = text
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  try {
+    return JSON.parse(withoutFence);
+  } catch {
+    // continue with cleanup attempts
+  }
+
+  const start = withoutFence.search(/[{[]/);
+  const end = Math.max(withoutFence.lastIndexOf('}'), withoutFence.lastIndexOf(']'));
+  if (start !== -1 && end > start) {
+    return JSON.parse(withoutFence.slice(start, end + 1));
+  }
+
+  throw new Error('Unable to parse AI JSON response');
+}
+
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -210,16 +240,17 @@ serve(async (req) => {
       const enhancementContent = data.choices[0].message.content;
 
       try {
-        enhancement = JSON.parse(enhancementContent);
+        enhancement = parseAIJson(enhancementContent);
         console.log('Successfully parsed OpenAI response');
       } catch (error) {
         console.error('Failed to parse OpenAI JSON response:', enhancementContent);
         throw new Error('AI returned invalid JSON format - please try again');
       }
+
     } else if (serviceName === 'gemini') {
-      console.log('Using Gemini with model:', configData.model_name || 'gemini-1.5-flash');
+      console.log('Using Gemini with model:', configData.model_name || 'gemini-2.5-flash');
       
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${configData.model_name || 'gemini-1.5-flash'}:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${configData.model_name || 'gemini-2.5-flash'}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -229,8 +260,13 @@ serve(async (req) => {
             parts: [{
               text: `You are an expert study assistant who helps improve and enhance notes for better learning. Return only valid JSON format as specified.\n\n${prompt}`
             }]
-          }]
+          }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            thinkingConfig: { thinkingBudget: 0 }
+          }
         }),
+
       });
 
       console.log('Gemini response status:', response.status);
@@ -271,7 +307,8 @@ serve(async (req) => {
       const enhancementContent = geminiData.candidates[0].content.parts[0].text || '';
       
       try {
-        enhancement = JSON.parse(enhancementContent);
+        enhancement = parseAIJson(enhancementContent);
+
         console.log('Successfully parsed Gemini response');
       } catch (error) {
         console.error('Failed to parse Gemini JSON response:', enhancementContent);
