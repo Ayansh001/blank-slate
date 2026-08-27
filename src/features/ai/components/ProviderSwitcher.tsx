@@ -13,12 +13,14 @@ const providerLabels: Record<AIProvider, string> = {
   openai: 'OpenAI',
   gemini: 'Google Gemini',
   anthropic: 'Claude (Anthropic)',
+  groq: 'Groq',
 };
 
 const providerIcons: Record<AIProvider, string> = {
   openai: '🤖',
   gemini: '🔮',
   anthropic: '🎭',
+  groq: '⚡',
 };
 
 export const ProviderSwitcher: React.FC<ProviderSwitcherProps> = ({ className }) => {

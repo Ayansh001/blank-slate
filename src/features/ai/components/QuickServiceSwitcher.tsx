@@ -38,6 +38,7 @@ export function QuickServiceSwitcher() {
       case 'openai': return 'ChatGPT';
       case 'gemini': return 'Gemini';
       case 'anthropic': return 'Claude';
+      case 'groq': return 'Groq';
       default: return serviceName;
     }
   };
