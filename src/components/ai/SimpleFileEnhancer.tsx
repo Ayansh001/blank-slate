@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -39,6 +40,7 @@ interface Enhancement {
 export function SimpleFileEnhancer({ file, onClose }: SimpleFileEnhancerProps) {
   const { user } = useAuth();
   const { activeConfig } = useAIConfig();
+  const queryClient = useQueryClient();
   const { getPreference } = useAIHistoryPreferences();
   const { notifyEnhancementComplete, notifyEnhancementError } = useAIEnhancementNotifications();
   const [enhancements, setEnhancements] = useState<Enhancement[]>([]);
