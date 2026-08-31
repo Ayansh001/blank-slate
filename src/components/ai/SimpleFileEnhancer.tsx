@@ -65,8 +65,8 @@ export function SimpleFileEnhancer({ file, onClose }: SimpleFileEnhancerProps) {
   };
 
   const saveFileEnhancementToDatabase = async (enhancementType: string, enhancementContent: any, originalContent: string): Promise<boolean> => {
-    if (!user || !activeConfig) {
-      console.log('Missing user or config for saving enhancement');
+    if (!user) {
+      console.log('Missing user for saving enhancement');
       return false;
     }
 
@@ -76,46 +76,72 @@ export function SimpleFileEnhancer({ file, onClose }: SimpleFileEnhancerProps) {
       return false;
     }
 
+    // model_used / ai_service are NOT NULL in the database, so always fall back
+    // to a safe value instead of writing undefined (which silently failed before).
+    const aiService = activeConfig?.service_name || 'unknown';
+    const modelUsed = activeConfig?.model_name || 'default';
+
+    const basePayload: Record<string, any> = {
+      file_id: file.id,
+      note_id: null, // Explicitly set to null for file enhancements
+      user_id: user.id,
+      enhancement_type: enhancementType,
+      original_content: (originalContent || '').substring(0, 10000), // Limit original content size
+      enhanced_content: enhancementContent as any,
+      ai_service: aiService,
+      model_used: modelUsed,
+      confidence_score: 85,
+      is_applied: false,
+      session_id: sessionIdRef.current
+    };
+
     try {
       console.log('Saving file enhancement to database:', {
         file_id: file.id,
         user_id: user.id,
         enhancement_type: enhancementType,
-        ai_service: activeConfig.service_name,
-        model_used: activeConfig.model_name,
+        ai_service: aiService,
+        model_used: modelUsed,
         session_id: sessionIdRef.current
       });
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('note_enhancements')
-        .insert({
-          file_id: file.id,
-          note_id: null, // Explicitly set to null for file enhancements
-          user_id: user.id,
-          enhancement_type: enhancementType,
-          original_content: originalContent.substring(0, 10000), // Limit original content size
-          enhanced_content: enhancementContent as any,
-          ai_service: activeConfig.service_name,
-          model_used: activeConfig.model_name,
-          confidence_score: 85,
-          is_applied: false,
-          session_id: sessionIdRef.current
-        } as any)
-        .select()
-        .single();
+        .insert(basePayload as any)
+        .select('id')
+        .maybeSingle();
+
+      // Retry without session_id if the column is missing from the API schema cache
+      if (error && (error.code === 'PGRST204' || /session_id/i.test(error.message || ''))) {
+        console.warn('Retrying file enhancement save without session_id:', error.message);
+        const { session_id, ...withoutSession } = basePayload;
+        const retry = await supabase
+          .from('note_enhancements')
+          .insert(withoutSession as any)
+          .select('id')
+          .maybeSingle();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) {
         console.error('Database error saving file enhancement:', error);
         throw new Error(`Database error: ${error.message}`);
       }
 
-      console.log('File enhancement saved successfully:', data.id);
+      console.log('File enhancement saved successfully:', data?.id);
+
+      // Make the new record visible on the History page immediately
+      queryClient.invalidateQueries({ queryKey: ['enhancement-history'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-history-data'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-analytics'] });
       return true;
     } catch (error) {
       console.error('Failed to save file enhancement to database:', error);
       return false;
     }
   };
+
 
   const generateEnhancement = async (enhancementType: string) => {
     const content = getFileContent();
