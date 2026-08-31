@@ -7,6 +7,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b';
+
+
 interface QuoteRequest {
   userId: string;
 }
@@ -257,6 +261,28 @@ async function generateQuotesForCategory(aiConfig: any, category: string): Promi
         }]
       }]
     };
+  } else if (aiConfig.service_name === 'groq') {
+    apiUrl = GROQ_CHAT_URL;
+    const apiKey = Deno.env.get('GROQ_API_KEY') || aiConfig.api_key || null;
+    headers = {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    };
+    body = {
+      model: aiConfig.model_name || GROQ_DEFAULT_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant that generates inspiring quotes for students. Return only the quotes, one per line, without numbering or extra formatting.'
+        },
+        {
+          role: 'user',
+          content: prompts[category as keyof typeof prompts]
+        }
+      ],
+      max_tokens: 300,
+      temperature: 0.8
+    };
   } else {
     throw new Error(`Unsupported AI service: ${aiConfig.service_name}`);
   }
@@ -274,7 +300,7 @@ async function generateQuotesForCategory(aiConfig: any, category: string): Promi
   const data = await response.json();
   
   let quotesText: string;
-  if (aiConfig.service_name === 'openai') {
+  if (aiConfig.service_name === 'openai' || aiConfig.service_name === 'groq') {
     quotesText = data.choices[0].message.content;
   } else if (aiConfig.service_name === 'gemini') {
     quotesText = data.candidates[0].content.parts[0].text;

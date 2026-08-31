@@ -209,7 +209,7 @@ export function EnhancedAIConfigPanel() {
                     <SelectItem value="groq">
                       <div className="flex items-center gap-2">
                         <span>⚡</span>
-                        <span>Groq (Llama 3.3 70B)</span>
+                        <span>Groq (GPT-OSS 120B)</span>
                       </div>
                     </SelectItem>
                   </SelectContent>
@@ -249,6 +249,8 @@ export function EnhancedAIConfigPanel() {
                         ? 'sk-...' 
                         : newConfig.service_name === 'gemini'
                         ? 'AIzaSy...'
+                        : newConfig.service_name === 'groq'
+                        ? 'gsk_...'
                         : 'Enter your API key'
                     }
                     value={newConfig.api_key}
@@ -273,6 +275,7 @@ export function EnhancedAIConfigPanel() {
                   {newConfig.service_name === 'openai' && 'Get your key from platform.openai.com'}
                   {newConfig.service_name === 'gemini' && 'Get your key from Google AI Studio'}
                   {newConfig.service_name === 'anthropic' && 'Get your key from console.anthropic.com'}
+                  {newConfig.service_name === 'groq' && 'Get your key from console.groq.com'}
                   {!newConfig.service_name && 'Your API key will be encrypted and stored securely'}
                 </p>
               </div>
@@ -303,7 +306,7 @@ export function EnhancedAIConfigPanel() {
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <span className="text-xl">
-                          {service === 'openai' ? '🤖' : service === 'gemini' ? '✨' : '🧠'}
+                          {service === 'openai' ? '🤖' : service === 'gemini' ? '✨' : service === 'groq' ? '⚡' : '🧠'}
                         </span>
                         <Badge variant="outline" className="font-medium">
                           {getServiceDisplayName(service)}

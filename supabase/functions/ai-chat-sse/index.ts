@@ -4,6 +4,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 console.log('Function loaded: ai-chat-sse');
 
+const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -126,6 +129,9 @@ serve(async (req) => {
     } else if (configData.service_name.toLowerCase() === 'gemini') {
       apiKey = Deno.env.get('GEMINI_API_KEY') || null;
       console.log('Gemini API key from secrets:', !!apiKey);
+    } else if (configData.service_name.toLowerCase() === 'groq') {
+      apiKey = Deno.env.get('GROQ_API_KEY') || null;
+      console.log('Groq API key from secrets:', !!apiKey);
     }
 
     // Fallback to stored API key if no secret is configured
@@ -283,6 +289,77 @@ serve(async (req) => {
                 }
               }
             }
+          } else if (serviceName === 'groq') {
+            const modelToUse = configData.model_name || GROQ_DEFAULT_MODEL;
+            console.log('Making Groq request with model:', modelToUse);
+
+            const response = await fetch(GROQ_CHAT_URL, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: modelToUse,
+                messages: [
+                  {
+                    role: 'system',
+                    content: `You are an AI study assistant. Help users understand and analyze their documents, answer questions, and provide educational support.${context}`
+                  },
+                  { role: 'user', content: message }
+                ],
+                stream: true,
+                temperature: 0.7,
+                max_tokens: 4000
+              }),
+            });
+
+            console.log('Groq response status:', response.status);
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('Groq API error:', response.status, errorText);
+
+              if (response.status === 401 || response.status === 403) {
+                throw new Error('Invalid Groq API key - please check your configuration');
+              } else if (response.status === 429) {
+                throw new Error('Groq rate limit exceeded - please try again later');
+              } else if (response.status === 404) {
+                throw new Error(`Groq model not available: ${modelToUse}`);
+              }
+              throw new Error(`Groq API error: ${response.status}`);
+            }
+
+            // Groq returns OpenAI-compatible SSE deltas
+            const reader = response.body?.getReader();
+            if (reader) {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = new TextDecoder().decode(value);
+                const lines = chunk.split('\n').filter(line => line.trim());
+
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') continue;
+
+                    try {
+                      const parsed = JSON.parse(data);
+                      const content = parsed.choices?.[0]?.delta?.content;
+                      if (content) {
+                        assistantMessage += content;
+                        sendEvent({ type: 'chunk', content });
+                      }
+                    } catch (parseError) {
+                      console.warn('Parse error in Groq stream:', parseError);
+                    }
+                  }
+                }
+              }
+            }
+
           } else if (serviceName === 'gemini') {
             const modelToUse = configData.model_name || 'gemini-2.5-flash';
             console.log('Making Gemini request with model:', modelToUse);

@@ -6,6 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b';
+
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -151,7 +155,24 @@ async function analyzeContent(file: any, analysisType: string, supabase: any, us
 
   const prompt = createAnalysisPrompt(content, file.name, analysisType);
   const serviceName = configData.service_name.toLowerCase();
-  const apiKey = Deno.env.get(serviceName === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY') || configData.api_key;
+
+  // Explicit per-provider key resolution: a Groq request must never receive
+  // the Gemini key (and vice versa). Secret first, then the user's saved key.
+  let apiKey: string | null = null;
+  if (serviceName === 'openai') {
+    apiKey = Deno.env.get('OPENAI_API_KEY') || null;
+  } else if (serviceName === 'gemini') {
+    apiKey = Deno.env.get('GEMINI_API_KEY') || null;
+  } else if (serviceName === 'groq') {
+    apiKey = Deno.env.get('GROQ_API_KEY') || null;
+  }
+  if (!apiKey) {
+    apiKey = configData.api_key || null;
+  }
+  if (!apiKey) {
+    throw new Error(`No API key configured for ${configData.service_name}`);
+  }
+
 
   if (serviceName === 'openai') {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -216,7 +237,47 @@ async function analyzeContent(file: any, analysisType: string, supabase: any, us
     } catch (error) {
       throw new Error('Failed to parse analysis content as JSON');
     }
+  } else if (serviceName === 'groq') {
+    const response = await fetch(GROQ_CHAT_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: configData.model_name || GROQ_DEFAULT_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert content analyst who provides comprehensive analysis of documents for educational purposes. Return only valid JSON format.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 8000,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Groq API error:', response.status, errorText);
+      throw new Error(`Groq API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const analysisContent = data.choices?.[0]?.message?.content || '';
+
+    try {
+      return JSON.parse(analysisContent);
+    } catch (error) {
+      throw new Error('Failed to parse analysis content as JSON');
+    }
   }
+
 
   throw new Error('Unsupported AI service');
 }

@@ -7,6 +7,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b';
+
+
 function classifyApiError(status: number, errorBody: string): { code: string; message: string } {
   if (status === 401) {
     return { code: 'invalid_key', message: 'Invalid API key. Please check your configuration.' };
@@ -92,11 +96,18 @@ serve(async (req) => {
     let apiKey: string | null = null;
     const serviceName = configData.service_name.toLowerCase();
     const dbKey = configData.api_key;
-    const envKey = serviceName === 'openai' ? Deno.env.get('OPENAI_API_KEY') : Deno.env.get('GEMINI_API_KEY');
-    
-    if (serviceName === 'openai' || serviceName === 'gemini') {
+    const envKey = serviceName === 'openai'
+      ? Deno.env.get('OPENAI_API_KEY')
+      : serviceName === 'gemini'
+        ? Deno.env.get('GEMINI_API_KEY')
+        : serviceName === 'groq'
+          ? Deno.env.get('GROQ_API_KEY')
+          : undefined;
+
+    if (serviceName === 'openai' || serviceName === 'gemini' || serviceName === 'groq') {
       apiKey = dbKey || envKey || null;
     }
+
 
     console.log('[concept-learner] KEY DIAGNOSTIC:', { 
       service: serviceName, 
@@ -272,7 +283,60 @@ Provide a JSON response with:
         result: parseConceptContent(content, prompt, isAdvanced),
         diagnostics: { provider: 'gemini', model: modelToUse, processingTime: Date.now() - startTime }
       });
+    } else if (serviceName === 'groq') {
+      const modelToUse = configData.model_name || GROQ_DEFAULT_MODEL;
+      console.log('[concept-learner] Calling Groq:', { model: modelToUse });
+
+      const response = await fetch(GROQ_CHAT_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: modelToUse,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Explain this concept: ${prompt}` }
+          ],
+          temperature: 0.7,
+          max_tokens: isAdvanced ? 4000 : 2000,
+          response_format: { type: 'json_object' },
+        }),
+      });
+
+      console.log('[concept-learner] Groq response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[concept-learner] Groq API error:', response.status, errorText);
+        const classified = classifyApiError(response.status, errorText);
+        return jsonResponse({
+          success: false,
+          error: classified.message,
+          code: classified.code,
+          diagnostics: { provider: 'groq', status: response.status, processingTime: Date.now() - startTime }
+        }, 200);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+
+      if (!content) {
+        return jsonResponse({
+          success: false,
+          error: 'No content received from Groq',
+          code: 'empty_response'
+        }, 200);
+      }
+
+      return jsonResponse({
+        success: true,
+        result: parseConceptContent(content, prompt, isAdvanced),
+        diagnostics: { provider: 'groq', model: modelToUse, processingTime: Date.now() - startTime }
+      });
     }
+
 
     return jsonResponse({ 
       success: false, 

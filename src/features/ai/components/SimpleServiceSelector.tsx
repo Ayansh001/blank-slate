@@ -38,7 +38,12 @@ export function SimpleServiceSelector() {
         return;
       }
 
-      const modelName = selectedService === 'openai' ? 'gpt-4.1-mini-2025-04-14' : 'gemini-2.5-flash';
+      const modelName =
+        selectedService === 'openai'
+          ? 'gpt-4.1-mini-2025-04-14'
+          : selectedService === 'groq'
+          ? 'openai/gpt-oss-120b'
+          : 'gemini-2.5-flash';
       
       await setActiveService({
         service_name: selectedService,
@@ -64,7 +69,7 @@ export function SimpleServiceSelector() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CheckCircle className="h-5 w-5 text-green-500" />
-            Connected to {activeConfig.service_name === 'openai' ? 'ChatGPT' : 'Gemini'}
+            Connected to {activeConfig.service_name === 'openai' ? 'ChatGPT' : activeConfig.service_name === 'groq' ? 'Groq' : 'Gemini'}
           </CardTitle>
           <CardDescription>
             Using {activeConfig.model_name} • Ready to chat
@@ -82,7 +87,7 @@ export function SimpleServiceSelector() {
           Choose Your AI Assistant
         </CardTitle>
         <CardDescription>
-          Select ChatGPT or Gemini and enter your API key to get started
+          Select ChatGPT, Gemini or Groq and enter your API key to get started
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -106,6 +111,9 @@ export function SimpleServiceSelector() {
               <SelectItem value="gemini">
                 Google Gemini (Pro) - Advanced & Free
               </SelectItem>
+              <SelectItem value="groq">
+                Groq (GPT-OSS 120B) - Ultra Fast
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -118,13 +126,21 @@ export function SimpleServiceSelector() {
           <Input
             id="apiKey"
             type="password"
-            placeholder={selectedService === 'openai' ? 'sk-...' : 'AIzaSy...'}
+            placeholder={
+              selectedService === 'openai'
+                ? 'sk-...'
+                : selectedService === 'groq'
+                ? 'gsk_...'
+                : 'AIzaSy...'
+            }
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">
-            {selectedService === 'openai' 
+            {selectedService === 'openai'
               ? 'Get your key from platform.openai.com'
+              : selectedService === 'groq'
+              ? 'Get your key from console.groq.com'
               : 'Get your key from Google AI Studio'
             }
           </p>

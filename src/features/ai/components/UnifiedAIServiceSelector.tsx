@@ -197,7 +197,7 @@ export function UnifiedAIServiceSelector() {
               <SelectItem value="groq">
                 <div className="flex items-center gap-2">
                   <AIProviderLogo provider="groq" size="sm" />
-                  <span>Groq (Llama 3.3 70B) - Ultra Fast</span>
+                  <span>Groq (GPT-OSS 120B) - Ultra Fast</span>
                 </div>
               </SelectItem>
             </SelectContent>

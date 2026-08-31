@@ -75,6 +75,8 @@ serve(async (req) => {
       result = await callOpenAI(prompt, configWithKey, options)
     } else if (aiConfigs.service_name === 'gemini') {
       result = await callGemini(prompt, configWithKey, options)
+    } else if (aiConfigs.service_name === 'groq') {
+      result = await callGroq(prompt, configWithKey, options)
     } else if (aiConfigs.service_name === 'anthropic') {
       result = await callAnthropic(prompt, configWithKey, options)
     } else {
@@ -107,6 +109,8 @@ function resolveApiKey(config: any): string | null {
     return Deno.env.get('OPENAI_API_KEY') ?? config.api_key ?? null;
   } else if (serviceName === 'gemini') {
     return Deno.env.get('GEMINI_API_KEY') ?? config.api_key ?? null;
+  } else if (serviceName === 'groq') {
+    return Deno.env.get('GROQ_API_KEY') ?? config.api_key ?? null;
   } else if (serviceName === 'anthropic') {
     return Deno.env.get('ANTHROPIC_API_KEY') ?? config.api_key ?? null;
   }
@@ -163,6 +167,42 @@ async function callOpenAI(prompt: string, config: any, options: any) {
 
   const data = await response.json()
   return data.choices[0]?.message?.content || ''
+}
+
+const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b';
+
+async function callGroq(prompt: string, config: any, options: any) {
+  const model = config.model_name || GROQ_DEFAULT_MODEL;
+  console.log('Using Groq model:', model);
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${config.api_key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 2000,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Invalid Groq API key - please check your configuration');
+    } else if (response.status === 404) {
+      throw new Error(`Groq model not available: ${model}`);
+    } else if (response.status === 429) {
+      throw new Error('Groq rate limit exceeded - please try again later');
+    }
+    throw new Error(`Groq API error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json()
+  return data.choices?.[0]?.message?.content || ''
 }
 
 async function callGemini(prompt: string, config: any, options: any) {

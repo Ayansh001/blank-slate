@@ -166,8 +166,12 @@ export function SimpleNoteEnhancer({ note, onClose }: SimpleNoteEnhancerProps) {
       
       console.log('Enhancement result received from backend:', validatedContent);
 
-      // The backend already saves to DB, so mark as saved
-      savedToHistory = historyEnabled && !!result.enhancementId;
+      // History is written client-side (backend no longer persists), so the row
+      // always carries the active provider (openai/gemini/groq) and session id.
+      if (historyEnabled) {
+        savedToHistory = await saveNoteEnhancementToDatabase(enhancementType, validatedContent, content);
+      }
+
 
       const newEnhancement: Enhancement = {
         type: enhancementType,

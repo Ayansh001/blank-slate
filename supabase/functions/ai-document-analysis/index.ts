@@ -6,6 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b';
+
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -89,6 +93,8 @@ serve(async (req) => {
       apiKey = Deno.env.get('OPENAI_API_KEY') ?? configData.api_key ?? null;
     } else if (serviceName === 'gemini') {
       apiKey = Deno.env.get('GEMINI_API_KEY') ?? configData.api_key ?? null;
+    } else if (serviceName === 'groq') {
+      apiKey = Deno.env.get('GROQ_API_KEY') ?? configData.api_key ?? null;
     }
 
     if (!apiKey) {
@@ -165,6 +171,51 @@ serve(async (req) => {
       const rawContent = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       try {
         analysisResult = { content: JSON.parse(rawContent), confidence: 0.85, tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } };
+      } catch {
+        analysisResult = { content: { summary: rawContent }, confidence: 0.7, tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } };
+      }
+    } else if (serviceName === 'groq') {
+      const groqModel = configData.model_name || GROQ_DEFAULT_MODEL;
+      const response = await fetch(GROQ_CHAT_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: groqModel,
+          messages: [
+            { role: 'system', content: 'You are an expert document analyst. Return only valid JSON.' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 4000,
+          response_format: { type: 'json_object' },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Groq API error:', response.status, errorText);
+        if (response.status === 401) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid Groq API key', requiresConfig: true }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        if (response.status === 404) {
+          return new Response(
+            JSON.stringify({ error: `Groq model not available: ${groqModel}`, requiresConfig: true }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        throw new Error(`Groq API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const rawContent = data?.choices?.[0]?.message?.content || '';
+      try {
+        analysisResult = { content: JSON.parse(rawContent), confidence: 0.85, tokenUsage: { input_tokens: data.usage?.prompt_tokens || 0, output_tokens: data.usage?.completion_tokens || 0, total_tokens: data.usage?.total_tokens || 0 } };
       } catch {
         analysisResult = { content: { summary: rawContent }, confidence: 0.7, tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } };
       }

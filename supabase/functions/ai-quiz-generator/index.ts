@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b';
+
 // Helper function to check history preferences
 async function checkHistoryPreference(supabase: any, userId: string, featureType: string): Promise<boolean> {
   try {
@@ -130,6 +133,9 @@ serve(async (req) => {
     } else if (serviceName === 'gemini') {
       apiKey = Deno.env.get('GEMINI_API_KEY') || null;
       console.log('Gemini API key from secrets:', !!apiKey);
+    } else if (serviceName === 'groq') {
+      apiKey = Deno.env.get('GROQ_API_KEY') || null;
+      console.log('Groq API key from secrets:', !!apiKey);
     }
 
     // Fallback to stored API key if no secret is configured
@@ -282,11 +288,86 @@ serve(async (req) => {
         console.error('Failed to parse Gemini JSON response:', quizContent);
         throw new Error('AI returned invalid JSON format - please try again');
       }
+    } else if (serviceName === 'groq') {
+      const groqModel = configData.model_name || GROQ_DEFAULT_MODEL;
+      console.log('Using Groq with model:', groqModel);
+
+      const response = await fetch(GROQ_CHAT_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: groqModel,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert educator who creates high-quality, educational quizzes. Return only valid JSON format as specified.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 8000,
+          response_format: { type: 'json_object' },
+        }),
+      });
+
+      console.log('Groq response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Groq API error:', response.status, errorData);
+
+        if (response.status === 401) {
+          return new Response(
+            JSON.stringify({ 
+              error: 'Invalid Groq API key',
+              details: 'Please check your Groq API key in AI settings',
+              requiresConfig: true
+            }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } else if (response.status === 429) {
+          return new Response(
+            JSON.stringify({ 
+              error: 'Groq rate limit exceeded',
+              details: 'Please wait a moment and try again'
+            }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } else if (response.status === 404) {
+          return new Response(
+            JSON.stringify({ 
+              error: `Groq model not available: ${groqModel}`,
+              details: 'Please choose a supported Groq model in AI settings',
+              requiresConfig: true
+            }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } else {
+          throw new Error(`Groq API error: ${response.status} ${response.statusText} - ${errorData}`);
+        }
+      }
+
+      const groqData = await response.json();
+      const quizContent = groqData?.choices?.[0]?.message?.content || '';
+
+      try {
+        quiz = JSON.parse(quizContent);
+        console.log('Successfully parsed Groq response');
+      } catch (error) {
+        console.error('Failed to parse Groq JSON response:', quizContent);
+        throw new Error('AI returned invalid JSON format - please try again');
+      }
     } else {
       return new Response(
         JSON.stringify({ 
           error: 'Unsupported AI service',
-          details: `Service '${serviceName}' is not supported. Please use OpenAI or Gemini.`,
+          details: `Service '${serviceName}' is not supported. Please use OpenAI, Gemini or Groq.`,
           requiresConfig: true
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -8,6 +8,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b';
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -60,6 +63,7 @@ serve(async (req) => {
     let apiKey: string;
     let apiEndpoint: string;
     let requestBody: any;
+    let groqModel = GROQ_DEFAULT_MODEL;
 
     if (provider === 'openai') {
       apiKey = Deno.env.get('OPENAI_API_KEY')!;
@@ -112,7 +116,71 @@ Return a JSON object with these exact fields:
         temperature: 0.7,
         max_tokens: 4000
       };
+    } else if (provider === 'groq') {
+      // Groq is an independent provider with its own key and endpoint.
+      // Secret first, then the user's saved Groq key.
+      const { data: groqConfig } = await supabase
+        .from('ai_service_configs')
+        .select('api_key, model_name')
+        .eq('user_id', user.id)
+        .eq('service_name', 'groq')
+        .maybeSingle();
+
+      apiKey = Deno.env.get('GROQ_API_KEY') || groqConfig?.api_key || '';
+      groqModel = groqConfig?.model_name || GROQ_DEFAULT_MODEL;
+      apiEndpoint = GROQ_CHAT_URL;
+
+
+      const systemPrompt = `You are an intelligent AI tutor. Create a comprehensive learning package for the concept provided. 
+
+Return a JSON object with these exact fields:
+{
+  "concept": "Main concept name",
+  "explanation": "Clear, detailed explanation in 3-5 paragraphs",
+  "keyPoints": ["Array of 4-7 important takeaways"],
+  "studyTips": ["Array of 2-4 study strategies"],
+  "examples": ["Array of 2-3 real-world examples"],
+  "relatedConcepts": [{"name": "Concept name", "relationship": "How it relates"}],
+  "mindMap": {
+    "center": "Main topic",
+    "branches": [
+      {"topic": "Definition", "subtopics": ["sub-concept 1", "sub-concept 2"]},
+      {"topic": "Examples", "subtopics": ["example 1", "example 2"]},
+      {"topic": "Applications", "subtopics": ["application 1", "application 2"]},
+      {"topic": "Key Terms", "subtopics": ["term 1", "term 2"]}
+    ]
+  },
+  "knowledgeGraph": {
+    "centralNode": "Main concept",
+    "connectedNodes": ["5-7 related topics"]
+  },
+  "youtubeSearchQuery": "Smart search phrase for educational videos",
+  "flashcardSummaries": [
+    {
+      "id": "concept-main",
+      "shortSummary": "Brief 1-sentence summary",
+      "comprehensiveExplanation": "Detailed 2-3 paragraph explanation with examples, applications, and deeper insights"
+    },
+    {
+      "id": "keypoint-0",
+      "shortSummary": "Key point brief summary",
+      "comprehensiveExplanation": "Detailed explanation of this key point with context and applications"
+    }
+  ]
+}`;
+
+      requestBody = {
+        model: groqModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Create a comprehensive learning package for: ${concept}` }
+        ],
+        temperature: 0.7,
+        max_tokens: 4000,
+        response_format: { type: 'json_object' }
+      };
     } else {
+
       // Default to Gemini
       apiKey = Deno.env.get('GEMINI_API_KEY')!;
       apiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -184,7 +252,7 @@ Generate additional flashcard summaries for each key point and example with both
       'Content-Type': 'application/json',
     };
 
-    if (provider === 'openai') {
+    if (provider === 'openai' || provider === 'groq') {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
@@ -203,7 +271,7 @@ Generate additional flashcard summaries for each key point and example with both
     const data = await response.json();
     let content: string;
 
-    if (provider === 'openai') {
+    if (provider === 'openai' || provider === 'groq') {
       content = data.choices?.[0]?.message?.content;
     } else {
       content = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -289,7 +357,7 @@ Generate additional flashcard summaries for each key point and example with both
           concept: concept,
           mode: 'enhanced',
           response_data: enhancedResult,
-          tokens_used: provider === 'openai' ? data.usage?.total_tokens || 0 : data.usageMetadata?.totalTokenCount || 0,
+          tokens_used: (provider === 'openai' || provider === 'groq') ? data.usage?.total_tokens || 0 : data.usageMetadata?.totalTokenCount || 0,
           processing_time: Date.now()
         });
 

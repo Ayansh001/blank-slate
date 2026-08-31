@@ -4,13 +4,13 @@ import { AIResponse, GenerateOptions } from '../types/providers';
 // Groq exposes an OpenAI-compatible REST surface, but it is an independent
 // provider with its own endpoint, models, keys and limits.
 export const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
-export const GROQ_DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+export const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b';
 export const GROQ_MODELS = [
-  'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
   'openai/gpt-oss-120b',
   'openai/gpt-oss-20b',
-  'meta-llama/llama-4-scout-17b-16e-instruct',
+  'groq/compound',
+  'groq/compound-mini',
+  'qwen/qwen3.8-27b',
 ];
 
 export class GroqProvider extends BaseAIProvider {
@@ -146,7 +146,7 @@ export class GroqProvider extends BaseAIProvider {
   }
 
   private calculateCost(tokens: number): number {
-    // llama-3.3-70b-versatile blended estimate (~$0.79/M tokens)
-    return (tokens / 1000) * 0.00079;
+    // openai/gpt-oss-120b blended estimate (~$0.60/M tokens)
+    return (tokens / 1000) * 0.0006;
   }
 }
