@@ -476,12 +476,20 @@ function createEnhancementPrompt(content: string, enhancementType: string): stri
   "studyQuestions": [
     {
       "question": "Study question",
+      "answer": "A detailed, educational answer that fully explains the concept",
       "type": "conceptual|factual|analytical",
       "difficulty": "easy|medium|hard"
     }
   ],
-  "reviewQuestions": ["Quick review question 1", "Quick review question 2"]
-}`;
+  "reviewQuestions": [
+    {
+      "question": "Quick review question",
+      "answer": "Concise but complete answer"
+    }
+  ]
+}
+
+CRITICAL: Every question MUST include a non-empty "answer" field based on the content above. Never omit the answer.`;
 
     case 'flashcards':
       return basePrompt + `Create a JSON object with this structure:

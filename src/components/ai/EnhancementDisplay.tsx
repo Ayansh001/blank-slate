@@ -320,6 +320,9 @@ export function EnhancementDisplay({ enhancement, type, sourceTitle }: Enhanceme
                   const questionId = `study-${index}`;
                   const saveKey = `study-question-${index}`;
                   const isOpen = openAnswers[questionId];
+                  const studyAnswer =
+                    q?.answer ?? q?.expectedAnswer ?? q?.expected_answer ?? q?.explanation ?? q?.solution ?? q?.correctAnswer ?? q?.correct_answer;
+
                   
                   return (
                     <div key={`${q.question}-${index}`} className="border rounded-lg overflow-hidden">

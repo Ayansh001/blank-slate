@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -39,6 +40,7 @@ interface Enhancement {
 export function SimpleNoteEnhancer({ note, onClose }: SimpleNoteEnhancerProps) {
   const { user } = useAuth();
   const { activeConfig } = useAIConfig();
+  const queryClient = useQueryClient();
   const { getPreference } = useAIHistoryPreferences();
   const { notifyEnhancementComplete, notifyEnhancementError } = useAIEnhancementNotifications();
   const [enhancements, setEnhancements] = useState<Enhancement[]>([]);
@@ -63,8 +65,8 @@ export function SimpleNoteEnhancer({ note, onClose }: SimpleNoteEnhancerProps) {
   };
 
   const saveNoteEnhancementToDatabase = async (enhancementType: string, enhancementContent: any, originalContent: string): Promise<boolean> => {
-    if (!user || !activeConfig) {
-      console.log('Missing user or config for saving enhancement');
+    if (!user) {
+      console.log('Missing user for saving enhancement');
       return false;
     }
 
@@ -74,46 +76,72 @@ export function SimpleNoteEnhancer({ note, onClose }: SimpleNoteEnhancerProps) {
       return false;
     }
 
+    // model_used / ai_service are NOT NULL in the database, so always fall back
+    // to a safe value instead of writing undefined (which silently failed before).
+    const aiService = activeConfig?.service_name || 'unknown';
+    const modelUsed = activeConfig?.model_name || 'default';
+
+    const basePayload: Record<string, any> = {
+      note_id: note.id,
+      file_id: null, // Explicitly set to null for note enhancements
+      user_id: user.id,
+      enhancement_type: enhancementType,
+      original_content: (originalContent || '').substring(0, 10000), // Limit original content size
+      enhanced_content: enhancementContent as any,
+      ai_service: aiService,
+      model_used: modelUsed,
+      confidence_score: 85,
+      is_applied: false,
+      session_id: sessionIdRef.current
+    };
+
     try {
       console.log('Saving note enhancement to database:', {
         note_id: note.id,
         user_id: user.id,
         enhancement_type: enhancementType,
-        ai_service: activeConfig.service_name,
-        model_used: activeConfig.model_name,
+        ai_service: aiService,
+        model_used: modelUsed,
         session_id: sessionIdRef.current
       });
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('note_enhancements')
-        .insert({
-          note_id: note.id,
-          file_id: null, // Explicitly set to null for note enhancements
-          user_id: user.id,
-          enhancement_type: enhancementType,
-          original_content: originalContent.substring(0, 10000), // Limit original content size
-          enhanced_content: enhancementContent as any,
-          ai_service: activeConfig.service_name,
-          model_used: activeConfig.model_name,
-          confidence_score: 85,
-          is_applied: false,
-          session_id: sessionIdRef.current
-        } as any)
-        .select()
-        .single();
+        .insert(basePayload as any)
+        .select('id')
+        .maybeSingle();
+
+      // Retry without session_id if the column is missing from the API schema cache
+      if (error && (error.code === 'PGRST204' || /session_id/i.test(error.message || ''))) {
+        console.warn('Retrying note enhancement save without session_id:', error.message);
+        const { session_id, ...withoutSession } = basePayload;
+        const retry = await supabase
+          .from('note_enhancements')
+          .insert(withoutSession as any)
+          .select('id')
+          .maybeSingle();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) {
         console.error('Database error saving note enhancement:', error);
         throw new Error(`Database error: ${error.message}`);
       }
 
-      console.log('Note enhancement saved successfully:', data.id);
+      console.log('Note enhancement saved successfully:', data?.id);
+
+      // Make the new record visible on the History page immediately
+      queryClient.invalidateQueries({ queryKey: ['enhancement-history'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-history-data'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-analytics'] });
       return true;
     } catch (error) {
       console.error('Failed to save note enhancement to database:', error);
       return false;
     }
   };
+
 
   const generateEnhancement = async (enhancementType: string) => {
     const content = getNoteContent();
